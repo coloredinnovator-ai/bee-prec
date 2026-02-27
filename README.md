@@ -27,20 +27,19 @@ Client website repository for Bee-Prec.
    - `firebase use nanny-tech`
 3. Deploy everything from this folder (`/Users/user1/Desktop/BEE-PREC`)
    - `cd /Users/user1/Desktop/BEE-PREC`
-   - `firebase deploy --project nanny-tech --only hosting:bee-prec-site,hosting:bee-prec-site-staging,firestore:rules --non-interactive`
-   - Storage rules are currently blocked until Storage is initialized (see below)
+   - `firebase deploy --project nanny-tech --non-interactive --only hosting:bee-prec-site,hosting:bee-prec-site-staging,firestore,storage`
 4. GitHub branch checks
    - `git status --short --branch`
    - `git log --oneline -n 3`
 
 ## One-time required action (if not yet done)
-- Firebase Storage must be initialized for `nanny-tech` before `storage:rules` deploy.
+- Firebase Storage must be initialized for `nanny-tech` before initial Storage deploy.
 - Open: https://console.firebase.google.com/project/nanny-tech/storage
 - Click **Get Started**
 
 ## After Storage is initialized
 Run:
-- `firebase deploy --project nanny-tech --only storage:rules --non-interactive`
+- `firebase deploy --project nanny-tech --only storage --non-interactive`
 
 ## GitHub + CI
 - Workflow: `.github/workflows/firebase-hosting-merge.yml`
