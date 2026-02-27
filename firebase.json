@@ -2,7 +2,7 @@
   "hosting": [
     {
       "target": "bee-prec-site",
-      "public": "bee-prec-app/build/web",
+      "public": "public",
       "ignore": [
         "firebase.json",
         "**/.*",
@@ -11,7 +11,7 @@
     },
     {
       "target": "bee-prec-site-staging",
-      "public": "bee-prec-app/build/web",
+      "public": "public",
       "ignore": [
         "firebase.json",
         "**/.*",

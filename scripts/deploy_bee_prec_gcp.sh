@@ -2,11 +2,23 @@
 set -euo pipefail
 
 PROJECT_ID="${1:-nanny-tech}"
-FLUTTER_PROJECT_PATH="${2:-bee-prec-app}"
-HOSTING_TARGET="${3:-bee-prec-site}"
+HOSTING_TARGET="${2:-bee-prec-site}"
+PUBLIC_DIR="${3:-public}"
 
-if [[ ! -x "$(command -v flutter)" ]]; then
-  echo "Error: flutter command not found in PATH."
+if [[ -z "${PROJECT_ID}" ]]; then
+  echo "Usage: $0 <PROJECT_ID> [hosting_target] [public_dir]"
+  echo "Example: $0 nanny-tech bee-prec-site public"
+  exit 1
+fi
+
+if [[ "${HOSTING_TARGET}" != "bee-prec-site" && "${HOSTING_TARGET}" != "bee-prec-site-staging" ]]; then
+  echo "Usage: $0 <PROJECT_ID> [hosting_target] [public_dir]"
+  echo "Error: hosting target must be 'bee-prec-site' or 'bee-prec-site-staging'."
+  exit 1
+fi
+
+if [[ ! -d "${PUBLIC_DIR}" ]]; then
+  echo "Error: ${PUBLIC_DIR} directory not found."
   exit 1
 fi
 
@@ -15,19 +27,25 @@ if [[ ! -x "$(command -v firebase)" ]]; then
   exit 1
 fi
 
-if [[ ! -f "${FLUTTER_PROJECT_PATH}/pubspec.yaml" ]]; then
-  echo "Error: pubspec.yaml not found in ${FLUTTER_PROJECT_PATH}"
+if [[ ! -f "${PUBLIC_DIR}/index.html" ]]; then
+  echo "Error: expected index.html in ${PUBLIC_DIR}."
   exit 1
 fi
 
-cd "${FLUTTER_PROJECT_PATH}"
-flutter --version
-flutter pub get
-flutter build web --release
+if [[ ! -f "${PUBLIC_DIR}/app.js" ]]; then
+  echo "Error: expected app.js in ${PUBLIC_DIR}."
+  exit 1
+fi
+
+cd "$(dirname "$0")/.."
+if [[ ! -f "${PUBLIC_DIR}/index.html" ]]; then
+  echo "Error: ${PUBLIC_DIR}/index.html not found at repo root."
+  exit 1
+fi
 cd - >/dev/null
 
+echo "Deploying Bee-Prec web to hosting target '${HOSTING_TARGET}' in project '${PROJECT_ID}'."
 firebase deploy \
   --project "${PROJECT_ID}" \
   --only "hosting:${HOSTING_TARGET}" \
   --non-interactive
-

@@ -5,11 +5,11 @@
   "targets": {
     "nanny-tech": {
       "hosting": {
-        "bee-prec-site": [
-          "bee-prec-site"
-        ],
         "bee-prec-site-staging": [
           "bee-prec-site-staging"
+        ],
+        "bee-prec-site": [
+          "bee-prec-site"
         ]
       }
     }

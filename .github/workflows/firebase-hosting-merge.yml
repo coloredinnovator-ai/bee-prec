@@ -26,21 +26,14 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' && github.event.inputs.branch == 'main'
     defaults:
       run:
-        working-directory: bee-prec-app
+        working-directory: .
     environment:
       name: production
       url: https://bee-prec-site.web.app
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-
-      - name: Install dependencies and build Flutter web
-        run: |
-          flutter config --no-analytics
-          flutter pub get
-          flutter build web --release
+      - name: Validate static web assets
+        run: test -f public/index.html && test -f public/app.js
 
       - name: Deploy Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
@@ -57,21 +50,14 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/MAROON-staging' || github.event_name == 'workflow_dispatch' && github.event.inputs.branch == 'MAROON-staging'
     defaults:
       run:
-        working-directory: bee-prec-app
+        working-directory: .
     environment:
       name: staging
       url: https://bee-prec-site-staging.web.app
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-
-      - name: Install dependencies and build Flutter web
-        run: |
-          flutter config --no-analytics
-          flutter pub get
-          flutter build web --release
+      - name: Validate static web assets
+        run: test -f public/index.html && test -f public/app.js
 
       - name: Deploy Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
