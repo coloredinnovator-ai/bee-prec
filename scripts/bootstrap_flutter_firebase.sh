@@ -4,11 +4,10 @@ set -euo pipefail
 PROJECT_ID="${1:-nanny-tech}"
 FLUTTER_PROJECT_PATH="${2:-}"
 ANDROID_PACKAGE="${3:-com.beeprec.client}"
-IOS_BUNDLE_ID="${4:-com.beeprec.client}"
 
 if [[ -z "${FLUTTER_PROJECT_PATH}" ]]; then
-  echo "Usage: $0 <PROJECT_ID> <FLUTTER_PROJECT_PATH> [android_package] [ios_bundle_id]"
-  echo "Example: $0 nanny-tech ./my_flutter_app com.beeprec.client com.beeprec.client"
+  echo "Usage: $0 <PROJECT_ID> <FLUTTER_PROJECT_PATH> [android_package]"
+  echo "Example: $0 nanny-tech ./bee-prec-app com.beeprec.client"
   exit 1
 fi
 
@@ -34,9 +33,8 @@ cd "${FLUTTER_PROJECT_PATH}"
 
 flutterfire configure \
   --project "${PROJECT_ID}" \
-  --platforms web,android,ios \
+  --platforms web,android \
   --android-package-name "${ANDROID_PACKAGE}" \
-  --ios-bundle-id "${IOS_BUNDLE_ID}" \
   --out "lib/firebase_options.dart"
 
 echo "Firebase wiring complete."
