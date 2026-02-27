@@ -16,7 +16,9 @@ Client website repository for Bee-Prec.
   - `firestore.rules`
   - `storage.rules`
 - Firebase Flutter entrypoint:
-  - Flutter Web app created in project `nanny-tech` (App ID: `1:269966152674:web:f6c19b36ddf1eba2b75fbb`)
+  - Firebase Web app created in project `nanny-tech` (App ID: `1:269966152674:web:f6c19b36ddf1eba2b75fbb`)
+  - Firebase Android app created in project `nanny-tech` (App ID: `1:269966152674:android:f366c86ce40d9937b75fbb`, package: `com.beeprec.client`)
+  - Firebase iOS app created in project `nanny-tech` (App ID: `1:269966152674:ios:7d11719b9131a4ebb75fbb`, bundle ID: `com.beeprec.client`)
 - Deployment config: `.github/workflows/firebase-hosting-merge.yml`
 - Firebase project/link map: `.firebaserc`, `firebase.json`
 
@@ -50,12 +52,13 @@ Run:
   - `gh run list -R coloredinnovator-ai/bee-prec --workflow="Deploy to Firebase Hosting" --limit 3`
 
 ## Flutter + Firebase
-- Firebase Web app for Flutter was created in `nanny-tech`:
-  - App ID: `1:269966152674:web:f6c19b36ddf1eba2b75fbb`
+- Firebase apps for Bee-Prec in project `nanny-tech`:
+  - Web App ID: `1:269966152674:web:f6c19b36ddf1eba2b75fbb`
+  - Android App ID: `1:269966152674:android:f366c86ce40d9937b75fbb`
+  - iOS App ID: `1:269966152674:ios:7d11719b9131a4ebb75fbb`
 - In a Flutter project, wire Firebase with:
   - `dart pub global activate flutterfire_cli`
-  - `flutterfire configure --project nanny-tech --android-package-name <com.yourcompany.bee_prec>`
-  - optionally scope to web only: `flutterfire configure --project nanny-tech --platforms web`
-- If needed for a new Android/iOS app, use:
-  - `firebase apps:create ANDROID "Bee-Prec Flutter Android" --project nanny-tech --package-name <com.yourcompany.bee_prec>`
-  - `firebase apps:create IOS "Bee-Prec Flutter iOS" --project nanny-tech --bundle-id <com.yourcompany.beePrec>`
+  - `flutterfire configure --project nanny-tech --platforms web,android,ios`
+  - if your mobile package/bundle IDs differ, use:
+    - `flutterfire configure --project nanny-tech --platforms android --android-package-name <your.android.package.id>`
+    - `flutterfire configure --project nanny-tech --platforms ios --ios-bundle-id <your.ios.bundle.id>`
