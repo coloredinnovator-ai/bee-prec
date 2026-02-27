@@ -9,14 +9,9 @@ service firebase.storage {
       return request.auth.uid == uid;
     }
 
-    function userRole(uid) {
-      return get(/databases/(default)/documents/users/$(uid)).data.role;
-    }
-
-    function isStaff(uid) {
+    function isStaff() {
       return signedIn()
-        && exists(/databases/(default)/documents/users/$(request.auth.uid))
-        && (userRole(request.auth.uid) == 'lawyer' || userRole(request.auth.uid) == 'admin');
+        && (request.auth.token.role == 'lawyer' || request.auth.token.role == 'admin');
     }
 
     function validAttachmentUpload() {
