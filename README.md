@@ -30,6 +30,8 @@ Client website repository for Bee-Prec.
    - `./scripts/bootstrap_web_firebase.sh nanny-tech bee-prec-site public`
    - `./scripts/deploy_bee_prec_gcp.sh nanny-tech bee-prec-site public`
    - For staging: `./scripts/deploy_bee_prec_gcp.sh nanny-tech bee-prec-site-staging public`
+   - Deploy both production and staging in one command:
+     - `./scripts/deploy_bee_prec_all_gcp.sh nanny-tech public`
 4. GitHub branch checks
    - `git status --short --branch`
    - `git log --oneline -n 3`
@@ -48,6 +50,19 @@ Run:
 - It deploys hosting for main and staging targets on push and on manual `workflow_dispatch`.
 - Confirm latest GH run:
   - `gh run list -R coloredinnovator-ai/bee-prec --workflow="Deploy to Firebase Hosting" --limit 3`
+
+## Custom domain (web production)
+The default production URL is:
+- https://bee-prec-site.web.app
+
+To use your own domain, add it in Firebase Console:
+- Open: https://console.firebase.google.com/project/nanny-tech/hosting/sites/bee-prec-site
+- Add custom domain and follow DNS TXT/CNAME steps.
+
+If you are managing DNS in Google Cloud:
+- Create/verify a DNS zone for your domain.
+- Add the verification TXT and CNAME records from Firebase.
+- Keep SSL/TLS in Firebase-managed mode (default).
 
 ## Static web deployment helpers
 - Bootstrap check:
