@@ -3,74 +3,183 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1f2942" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; base-uri 'self'; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://*.gstatic.com https://*.google-analytics.com https://securetoken.googleapis.com; font-src 'self'; img-src 'self' data: https:; script-src 'self'; style-src 'self'; frame-ancestors 'none'; object-src 'none'; worker-src 'self';"
+    />
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="X-Frame-Options" content="DENY" />
     <title>Bee-Prec</title>
-    <style>
-      :root {
-        --bg: #f5f7fb;
-        --text: #101318;
-        --accent: #0d6efd;
-        --card: #ffffff;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        margin: 0;
-        font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-        color: var(--text);
-        background: radial-gradient(circle at top, #eaf0ff 0%, var(--bg) 55%);
-      }
-      .shell {
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        padding: 2rem;
-      }
-      .card {
-        width: min(760px, 94vw);
-        background: var(--card);
-        border-radius: 18px;
-        border: 1px solid #e2e6f2;
-        box-shadow: 0 12px 40px rgba(17, 27, 58, 0.08);
-        padding: 2.2rem;
-      }
-      h1 {
-        margin: 0 0 0.5rem;
-      }
-      p {
-        margin: 0.45rem 0;
-        line-height: 1.6;
-      }
-      .meta {
-        margin-top: 1.25rem;
-        padding: 1rem;
-        border-radius: 12px;
-        background: #f8faff;
-        border: 1px dashed #ced6ea;
-      }
-      .pill {
-        display: inline-block;
-        margin-top: 0.75rem;
-        background: #eef4ff;
-        color: #173f9e;
-        padding: 0.35rem 0.7rem;
-        border-radius: 999px;
-        font-size: 0.9rem;
-      }
-    </style>
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="app.js" defer></script>
   </head>
   <body>
-    <main class="shell">
-      <section class="card">
-        <h1>Bee-Prec</h1>
-        <p>Production and staging environments are now isolated in separate Firebase Hosting targets and driven by branch-specific GitHub Actions.</p>
-        <p>Configured for: <strong>GitHub</strong> + <strong>GCP</strong> + <strong>Firebase</strong>.</p>
-        <div class="meta">
-          <strong>Deployment targets</strong>
-          <div class="pill">main → bee-prec-site</div>
-          <div class="pill">MAROON-staging → bee-prec-site-staging</div>
+    <div class="noise"></div>
+    <header class="topbar">
+      <div class="title-wrap">
+        <div class="brand">
+          <span class="bee">Bee</span><span>-Prec</span>
         </div>
+        <p>Secure legal co-op platform for consultations, incident reporting, and moderated community support.</p>
+      </div>
+      <div class="status-wrap">
+        <span id="connectionChip">Firebase disconnected</span>
+        <span id="userBadge">Not signed in</span>
+      </div>
+    </header>
+
+    <main class="shell">
+      <aside class="left-nav">
+        <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+        <button class="tab-btn" data-tab="consultations">Consultations</button>
+        <button class="tab-btn" data-tab="reports">Incident Reports</button>
+        <button class="tab-btn" data-tab="community">Community</button>
+        <button class="tab-btn" data-tab="safety">Safety</button>
+        <button class="tab-btn" id="moderationTab" data-tab="moderation" hidden>Moderation</button>
+      </aside>
+
+      <section class="content">
+        <section class="panel active" id="dashboard">
+          <h2>Account Access</h2>
+          <div class="grid two-col">
+            <form id="registerForm" class="card">
+              <h3>Create account</h3>
+              <label>Display name</label>
+              <input id="regName" type="text" required />
+              <label>Email</label>
+              <input id="regEmail" type="email" required />
+              <label>Password</label>
+              <input id="regPassword" type="password" required minlength="6" />
+              <label>Role request</label>
+              <select id="regRole">
+                <option value="member">Member</option>
+                <option value="lawyer">Lawyer</option>
+              </select>
+              <label>Lawyer passcode (required if lawyer)</label>
+              <input id="regLawyerCode" type="text" placeholder="Optional" />
+              <button type="submit">Create account</button>
+            </form>
+
+            <form id="loginForm" class="card">
+              <h3>Sign in</h3>
+              <label>Email</label>
+              <input id="loginEmail" type="email" required />
+              <label>Password</label>
+              <input id="loginPassword" type="password" required />
+              <div class="row">
+                <button type="submit">Sign in</button>
+                <button type="button" id="resetPasswordBtn" class="ghost">Reset password</button>
+              </div>
+              <button type="button" id="logoutBtn" class="ghost" disabled>Sign out</button>
+            </form>
+          </div>
+        </section>
+
+        <section class="panel" id="consultations">
+          <h2>Consultations</h2>
+          <form id="consultationForm" class="card">
+            <h3>Request consultation</h3>
+            <label>Case topic</label>
+            <input id="consultTopic" required />
+            <label>Consultation notes</label>
+            <textarea id="consultNotes" required rows="4"></textarea>
+            <label>Area</label>
+            <select id="consultArea">
+              <option value="contracts">Contracts</option>
+              <option value="workplace">Workplace harassment</option>
+              <option value="smallBusiness">Small business harm</option>
+              <option value="cyber">Cyber and fraud</option>
+              <option value="other">Other</option>
+            </select>
+            <button type="submit">Submit request</button>
+          </form>
+          <div class="card">
+            <h3>My requests</h3>
+            <div id="consultList" class="list"></div>
+          </div>
+        </section>
+
+        <section class="panel" id="reports">
+          <h2>Incident reports</h2>
+          <form id="reportForm" class="card">
+            <h3>Report business crime / community harm</h3>
+            <label>Headline</label>
+            <input id="reportTitle" required />
+            <label>Category</label>
+            <select id="reportCategory">
+              <option value="fraud">Fraud</option>
+              <option value="harassment">Harassment</option>
+              <option value="discrimination">Discrimination</option>
+              <option value="stolenBusinessData">Business-data abuse</option>
+              <option value="other">Other</option>
+            </select>
+            <label>Details</label>
+            <textarea id="reportBody" required rows="4"></textarea>
+            <label>When did this occur?</label>
+            <input id="reportDate" type="datetime-local" required />
+            <label>Attachments (optional)</label>
+            <input id="reportFile" type="file" accept="image/*,.pdf,.doc,.docx,.txt,.csv" />
+            <button type="submit">Submit report</button>
+          </form>
+          <div class="card">
+            <h3>Filed reports</h3>
+            <div id="reportList" class="list"></div>
+          </div>
+        </section>
+
+        <section class="panel" id="community">
+          <h2>Community forum</h2>
+          <form id="communityPostForm" class="card">
+            <h3>Post to community</h3>
+            <label>Post title</label>
+            <input id="postTitle" required />
+            <label>Post body</label>
+            <textarea id="postBody" required rows="4"></textarea>
+            <button type="submit">Publish</button>
+          </form>
+          <div class="card">
+            <h3>Public board</h3>
+            <div id="postFeed" class="list"></div>
+          </div>
+        </section>
+
+        <section class="panel" id="safety">
+          <h2>Safety actions</h2>
+          <div class="card">
+            <h3>Delete content</h3>
+            <p>Remove your recent consultation and community messages.</p>
+            <button id="softDeleteMessagesBtn">Delete my recent messages</button>
+          </div>
+          <div class="card">
+            <h3>Account cleanup</h3>
+            <label>Re-auth password</label>
+            <input id="deleteAccountPassword" type="password" placeholder="Password" />
+            <button id="deleteAccountBtn" class="danger">Delete account</button>
+          </div>
+        </section>
+
+        <section class="panel" id="moderation">
+          <h2>Lawyer / Moderation operations</h2>
+          <div class="grid two-col">
+            <div class="card">
+              <h3>Consultations pending review</h3>
+              <div id="moderationConsults" class="list"></div>
+            </div>
+            <div class="card">
+              <h3>Incident queue</h3>
+              <div id="moderationReports" class="list"></div>
+            </div>
+            <div class="card wide">
+              <h3>Community moderation</h3>
+              <div id="moderationPosts" class="list"></div>
+            </div>
+          </div>
+        </section>
       </section>
     </main>
+
+    <div id="toast"></div>
   </body>
 </html>

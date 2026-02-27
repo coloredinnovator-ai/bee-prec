@@ -1,0 +1,47 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return request.auth.uid == uid;
+    }
+
+    function userRole(uid) {
+      return get(/databases/(default)/documents/users/$(uid)).data.role;
+    }
+
+    function isStaff(uid) {
+      return signedIn()
+        && exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && (userRole(request.auth.uid) == 'lawyer' || userRole(request.auth.uid) == 'admin');
+    }
+
+    function validAttachmentUpload() {
+      return request.resource.size > 0
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType in [
+          'image/jpeg',
+          'image/png',
+          'image/webp',
+          'application/pdf',
+          'text/plain',
+          'text/csv',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ];
+    }
+
+    match /incidents/{uid}/{reportId}/{allPaths=**} {
+      allow read: if signedIn() && (isOwner(uid) || isStaff());
+      allow write: if signedIn() && isOwner(uid) && validAttachmentUpload();
+      allow delete: if signedIn() && (isOwner(uid) || isStaff());
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
