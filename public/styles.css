@@ -264,6 +264,35 @@ button.danger {
   font-size: 0.8rem;
 }
 
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  user-select: none;
+  margin-top: 0.25rem;
+}
+
+.inline-check input {
+  width: auto;
+  margin: 0;
+}
+
+.inline-check span {
+  font-size: 0.92rem;
+}
+
+.bee-beacon {
+  display: inline-block;
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 50%;
+  margin-right: 0.35rem;
+  background: radial-gradient(circle at 30% 35%, #fff9 0 6px, transparent 7px),
+    radial-gradient(circle at 70% 35%, #fff9 0 6px, transparent 7px),
+    linear-gradient(90deg, #f59e0b, #fde047, #f59e0b);
+  box-shadow: 0 0 0 2px #11182788 inset, 0 6px 12px #f59e0b44;
+}
+
 #toast {
   position: fixed;
   left: 50%;

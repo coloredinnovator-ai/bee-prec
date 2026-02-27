@@ -20,9 +20,10 @@
     <header class="topbar">
       <div class="title-wrap">
         <div class="brand">
+          <span class="bee-beacon" aria-hidden="true"></span>
           <span class="bee">Bee</span><span>-Prec</span>
         </div>
-        <p>Secure legal co-op platform for consultations, incident reporting, and moderated community support.</p>
+        <p>Lawyer-owned legal co-op for consultations, incident reporting, and a safe community forum.</p>
       </div>
       <div class="status-wrap">
         <span id="connectionChip">Firebase disconnected</span>
@@ -93,6 +94,15 @@
               <option value="cyber">Cyber and fraud</option>
               <option value="other">Other</option>
             </select>
+            <label>Urgency</label>
+            <select id="consultUrgency">
+              <option value="low">Low</option>
+              <option value="normal" selected>Normal</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+            <label>Preferred contact method</label>
+            <input id="consultContact" required placeholder="Email, phone, or platform handle" />
             <button type="submit">Submit request</button>
           </form>
           <div class="card">
@@ -115,12 +125,26 @@
               <option value="stolenBusinessData">Business-data abuse</option>
               <option value="other">Other</option>
             </select>
+            <label>Priority</label>
+            <select id="reportPriority">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select>
+            <label>Business name</label>
+            <input id="reportBusiness" placeholder="Business impacted (optional)" />
+            <label>Location</label>
+            <input id="reportLocation" placeholder="City, state, or region" />
             <label>Details</label>
             <textarea id="reportBody" required rows="4"></textarea>
             <label>When did this occur?</label>
             <input id="reportDate" type="datetime-local" required />
             <label>Attachments (optional)</label>
             <input id="reportFile" type="file" accept="image/*,.pdf,.doc,.docx,.txt,.csv" />
+            <label class="inline-check">
+              <input id="reportAnonymous" type="checkbox" />
+              <span>Submit anonymously</span>
+            </label>
             <button type="submit">Submit report</button>
           </form>
           <div class="card">
@@ -153,10 +177,10 @@
             <button id="softDeleteMessagesBtn">Delete my recent messages</button>
           </div>
           <div class="card">
-            <h3>Account cleanup</h3>
-            <label>Re-auth password</label>
-            <input id="deleteAccountPassword" type="password" placeholder="Password" />
-            <button id="deleteAccountBtn" class="danger">Delete account</button>
+            <h3>Account deletion request</h3>
+            <label>Reason for account removal</label>
+            <textarea id="deletionReason" rows="4" placeholder="Why you want your account removed"></textarea>
+            <button id="deletionRequestBtn" class="danger">Request account deletion</button>
           </div>
         </section>
 
@@ -174,6 +198,14 @@
             <div class="card wide">
               <h3>Community moderation</h3>
               <div id="moderationPosts" class="list"></div>
+            </div>
+            <div class="card">
+              <h3>Lawyer onboarding</h3>
+              <div id="moderationLawyers" class="list"></div>
+            </div>
+            <div class="card">
+              <h3>Account deletion requests</h3>
+              <div id="moderationDeletionRequests" class="list"></div>
             </div>
           </div>
         </section>
