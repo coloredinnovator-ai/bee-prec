@@ -65,4 +65,5 @@ class DefaultFirebaseOptions {
     projectId: 'nanny-tech',
     storageBucket: 'nanny-tech.firebasestorage.app',
   );
+
 }
