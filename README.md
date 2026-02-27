@@ -18,20 +18,18 @@ Client website repository for Bee-Prec.
 - Deployment config: `.github/workflows/firebase-hosting-merge.yml`
 - Firebase project/link map: `.firebaserc`, `firebase.json`
 
-## Terminal setup (strict web / no Flutter)
-1. Authenticate
-   - `gcloud auth login`
-   - `firebase login`
-2. Verify project context
-   - `gcloud config set project nanny-tech`
-   - `firebase use nanny-tech`
-3. Bootstrap and deploy from this folder (`/Users/user1/Desktop/BEE-PREC`)
-   - `cd /Users/user1/Desktop/BEE-PREC`
-   - `./scripts/bootstrap_web_firebase.sh nanny-tech bee-prec-site public`
-   - `./scripts/deploy_bee_prec_gcp.sh nanny-tech bee-prec-site public`
-   - For staging: `./scripts/deploy_bee_prec_gcp.sh nanny-tech bee-prec-site-staging public`
-   - Deploy both production and staging in one command:
-     - `./scripts/deploy_bee_prec_all_gcp.sh nanny-tech public`
+## Deployment model (remote-first, no local publish required)
+1. All publishing is handled by GitHub-hosted CI (`.github/workflows/firebase-hosting-merge.yml`) and deploys directly to Firebase Hosting.
+2. Push to `main` to deploy production (`bee-prec-site`).
+3. Push to `MAROON-staging` to deploy staging (`bee-prec-site-staging`).
+4. You can also run:
+   - `workflow_dispatch` in GitHub Actions (branch selector: `main` or `MAROON-staging`) to deploy without local CLI access.
+
+## Optional local helpers
+- Local-only helper scripts are kept for debugging or manual recovery:
+  - `./scripts/bootstrap_web_firebase.sh`
+  - `./scripts/deploy_bee_prec_gcp.sh`
+  - `./scripts/deploy_bee_prec_all_gcp.sh`
 4. GitHub branch checks
    - `git status --short --branch`
    - `git log --oneline -n 3`
