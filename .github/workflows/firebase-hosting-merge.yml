@@ -8,6 +8,16 @@ on:
     branches:
       - main
       - MAROON-staging
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch/environment to deploy"
+        required: true
+        default: "main"
+        type: choice
+        options:
+          - main
+          - MAROON-staging
 
 jobs:
   deploy:
@@ -16,6 +26,9 @@ jobs:
     defaults:
       run:
         working-directory: bee-prec-app
+    environment:
+      name: ${{ matrix.branch == 'main' && 'production' || 'staging' }}
+      url: ${{ matrix.target == 'bee-prec-site' && 'https://bee-prec-site.web.app' || 'https://bee-prec-site-staging.web.app' }}
     strategy:
       fail-fast: false
       matrix:
@@ -40,7 +53,8 @@ jobs:
 
       - name: Deploy Firebase Hosting
         if: |
-          github.ref == format('refs/heads/{0}', matrix.branch)
+          (github.event_name == 'push' && github.ref == format('refs/heads/{0}', matrix.branch)) ||
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.branch == matrix.branch)
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
