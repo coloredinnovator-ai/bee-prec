@@ -1,0 +1,69 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownRecord(uid) {
+      return request.auth.uid == uid;
+    }
+
+    function isLawyer() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'lawyer'
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        );
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create: if ownRecord(uid);
+      allow update: if ownRecord(uid)
+        && request.resource.data.role in ['member', 'lawyer', 'admin'];
+      allow delete: if false;
+    }
+
+    match /consultations/{consultId} {
+      allow create: if signedIn();
+      allow read: if signedIn() && (
+        resource.data.createdBy == request.auth.uid || isLawyer()
+      );
+      allow update: if signedIn() && (
+        resource.data.createdBy == request.auth.uid || isLawyer()
+      );
+      allow delete: if false;
+    }
+
+    match /incidentReports/{reportId} {
+      allow create: if signedIn();
+      allow read: if signedIn() && (
+        resource.data.reportedBy == request.auth.uid || isLawyer()
+      );
+      allow update: if signedIn() && (
+        resource.data.reportedBy == request.auth.uid || isLawyer()
+      );
+      allow delete: if false;
+    }
+
+    match /communityPosts/{postId} {
+      allow create: if signedIn();
+      allow read: if signedIn() && !(resource.data.removed == true);
+      allow update: if signedIn() && (
+        resource.data.createdBy == request.auth.uid || isLawyer()
+      );
+      allow delete: if false;
+    }
+
+    match /communityComments/{commentId} {
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update: if signedIn() && (
+        resource.data.createdBy == request.auth.uid || isLawyer()
+      );
+      allow delete: if false;
+    }
+  }
+}
