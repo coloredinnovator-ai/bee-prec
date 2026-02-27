@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "269966152674",
+    "project_id": "nanny-tech",
+    "storage_bucket": "nanny-tech.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:269966152674:android:f366c86ce40d9937b75fbb",
+        "android_client_info": {
+          "package_name": "com.beeprec.client"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "269966152674-knldf7uc20n6v4aomt46eg3nagdsban3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAoj5JxHHoULlHmshRoMOVYPZWdozzqZ7w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "269966152674-16fb31e5c233m6afq383svh5vesthnha.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "269966152674-j0m519urunm7utf0e9b9pgr3v9fqvuhj.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.beeprec.client"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

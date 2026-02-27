@@ -18,9 +18,10 @@ Client website repository for Bee-Prec.
 - Firebase Flutter entrypoint:
   - Firebase Web app created in project `nanny-tech` (App ID: `1:269966152674:web:f6c19b36ddf1eba2b75fbb`)
   - Firebase Android app created in project `nanny-tech` (App ID: `1:269966152674:android:f366c86ce40d9937b75fbb`, package: `com.beeprec.client`)
-  - Firebase iOS app created in project `nanny-tech` (App ID: `1:269966152674:ios:7d11719b9131a4ebb75fbb`, bundle ID: `com.beeprec.client`)
+- Firebase iOS app created in project `nanny-tech` (App ID: `1:269966152674:ios:7d11719b9131a4ebb75fbb`, bundle ID: `com.beeprec.client`)
 - Deployment config: `.github/workflows/firebase-hosting-merge.yml`
 - Firebase project/link map: `.firebaserc`, `firebase.json`
+- Flutter project scaffold (created): `bee-prec-app`
 
 ## Terminal setup (Yolo runbook)
 1. Authenticate
@@ -64,3 +65,10 @@ Run:
     - `flutterfire configure --project nanny-tech --platforms ios --ios-bundle-id <your.ios.bundle.id>`
 - Fast start:
   - `./scripts/bootstrap_flutter_firebase.sh nanny-tech /path/to/flutter/app com.beeprec.client com.beeprec.client`
+- Current Flutter starter bootstrap is already done for `bee-prec-app`:
+  - `cd bee-prec-app`
+  - `flutter pub get`
+  - `flutter run -d chrome`
+- iOS configure note:
+  - Full iOS Firebase sync with `flutterfire` requires `xcodeproj` on macOS Ruby path.
+  - If missing, install `xcodeproj` or run iOS steps from a standard Apple development machine.
