@@ -23,6 +23,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    if: |
+      (github.event_name == 'push' && github.ref == format('refs/heads/{0}', matrix.branch)) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.branch == matrix.branch)
     defaults:
       run:
         working-directory: bee-prec-app
@@ -52,9 +55,6 @@ jobs:
           flutter build web --release
 
       - name: Deploy Firebase Hosting
-        if: |
-          (github.event_name == 'push' && github.ref == format('refs/heads/{0}', matrix.branch)) ||
-          (github.event_name == 'workflow_dispatch' && github.event.inputs.branch == matrix.branch)
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
