@@ -3,11 +3,23 @@ permissions:
   contents: read
   id-token: write
   pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:
       - main
       - MAROON-staging
+    paths:
+      - "public/**"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/firebase-hosting-merge.yml"
+      - "firestore.rules"
+      - "storage.rules"
   workflow_dispatch:
     inputs:
       branch:
