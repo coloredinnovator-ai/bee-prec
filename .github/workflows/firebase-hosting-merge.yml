@@ -67,7 +67,22 @@ jobs:
           set -euo pipefail
           export GOOGLE_APPLICATION_CREDENTIALS="${{ steps.deploy-rules-auth-main.outputs.credentials_file_path }}"
           npm install -g firebase-tools
-          npx firebase-tools deploy --project nanny-tech --only firestore:rules,storage:rules --non-interactive
+          npx firebase-tools deploy --project nanny-tech --only firestore:rules --non-interactive
+
+          set +e
+          STORAGE_RULES_OUTPUT="$(npx firebase-tools deploy --project nanny-tech --only storage:rules --non-interactive 2>&1)"
+          STORAGE_RULES_EXIT_CODE=$?
+          set -e
+          if [ "$STORAGE_RULES_EXIT_CODE" -ne 0 ]; then
+            if printf '%s\n' "$STORAGE_RULES_OUTPUT" | grep -q "firebasestorage.defaultBucket.get"; then
+              echo "::warning::Skipping storage rules deploy because the default storage bucket is not yet available to the deploy service account."
+            else
+              echo "$STORAGE_RULES_OUTPUT"
+              exit "$STORAGE_RULES_EXIT_CODE"
+            fi
+          else
+            echo "$STORAGE_RULES_OUTPUT"
+          fi
 
   deploy-staging:
     runs-on: ubuntu-latest
@@ -104,4 +119,19 @@ jobs:
           set -euo pipefail
           export GOOGLE_APPLICATION_CREDENTIALS="${{ steps.deploy-rules-auth-staging.outputs.credentials_file_path }}"
           npm install -g firebase-tools
-          npx firebase-tools deploy --project nanny-tech --only firestore:rules,storage:rules --non-interactive
+          npx firebase-tools deploy --project nanny-tech --only firestore:rules --non-interactive
+
+          set +e
+          STORAGE_RULES_OUTPUT="$(npx firebase-tools deploy --project nanny-tech --only storage:rules --non-interactive 2>&1)"
+          STORAGE_RULES_EXIT_CODE=$?
+          set -e
+          if [ "$STORAGE_RULES_EXIT_CODE" -ne 0 ]; then
+            if printf '%s\n' "$STORAGE_RULES_OUTPUT" | grep -q "firebasestorage.defaultBucket.get"; then
+              echo "::warning::Skipping storage rules deploy because the default storage bucket is not yet available to the deploy service account."
+            else
+              echo "$STORAGE_RULES_OUTPUT"
+              exit "$STORAGE_RULES_EXIT_CODE"
+            fi
+          else
+            echo "$STORAGE_RULES_OUTPUT"
+          fi
