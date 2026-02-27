@@ -1,0 +1,11 @@
+{
+  "hosting": {
+    "target": "bee-prec-site",
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "nanny-tech"
+  },
+  "targets": {
+    "nanny-tech": {
+      "hosting": {
+        "bee-prec-site": [
+          "bee-prec-site"
+        ]
+      }
+    }
+  }
+}
