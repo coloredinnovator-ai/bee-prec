@@ -20,28 +20,16 @@ on:
           - MAROON-staging
 
 jobs:
-  deploy:
+  deploy-main:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: |
-      (github.event_name == 'push' && github.ref == format('refs/heads/{0}', matrix.branch)) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.branch == matrix.branch)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' && github.event.inputs.branch == 'main'
     defaults:
       run:
         working-directory: bee-prec-app
     environment:
-      name: ${{ matrix.branch == 'main' && 'production' || 'staging' }}
-      url: ${{ matrix.target == 'bee-prec-site' && 'https://bee-prec-site.web.app' || 'https://bee-prec-site-staging.web.app' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - branch: main
-            channelId: live
-            target: bee-prec-site
-          - branch: MAROON-staging
-            channelId: live
-            target: bee-prec-site-staging
+      name: production
+      url: https://bee-prec-site.web.app
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -59,6 +47,37 @@ jobs:
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
           firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_NANNY_TECH }}'
-          channelId: ${{ matrix.channelId }}
+          channelId: live
           projectId: nanny-tech
-          target: ${{ matrix.target }}
+          target: bee-prec-site
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name == 'push' && github.ref == 'refs/heads/MAROON-staging' || github.event_name == 'workflow_dispatch' && github.event.inputs.branch == 'MAROON-staging'
+    defaults:
+      run:
+        working-directory: bee-prec-app
+    environment:
+      name: staging
+      url: https://bee-prec-site-staging.web.app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies and build Flutter web
+        run: |
+          flutter config --no-analytics
+          flutter pub get
+          flutter build web --release
+
+      - name: Deploy Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_NANNY_TECH }}'
+          channelId: live
+          projectId: nanny-tech
+          target: bee-prec-site-staging
