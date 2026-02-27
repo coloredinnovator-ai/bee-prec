@@ -1,3 +1,3 @@
-# BEE-PREC
+# Bee-Prec
 
-Client website repository (separate environment).
+Client website repository for Bee-Prec.
