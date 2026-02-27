@@ -62,3 +62,5 @@ Run:
   - if your mobile package/bundle IDs differ, use:
     - `flutterfire configure --project nanny-tech --platforms android --android-package-name <your.android.package.id>`
     - `flutterfire configure --project nanny-tech --platforms ios --ios-bundle-id <your.ios.bundle.id>`
+- Fast start:
+  - `./scripts/bootstrap_flutter_firebase.sh nanny-tech /path/to/flutter/app com.beeprec.client com.beeprec.client`
