@@ -5,63 +5,157 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function ownRecord(uid) {
+    function userRole(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.role;
+    }
+
+    function isSelf(uid) {
       return request.auth.uid == uid;
     }
 
-    function isLawyer() {
+    function isLawyerOrAdmin() {
       return signedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && (
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'lawyer'
-          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
-        );
+        && (userRole(request.auth.uid) == 'lawyer' || userRole(request.auth.uid) == 'admin');
+    }
+
+    function isSafeText(v, max) {
+      return v is string && v.size() <= max && v.size() >= 1;
+    }
+
+    function isSafeProfile(profile) {
+      return isSafeText(profile.uid, 128)
+        && profile.uid is string
+        && isSelf(profile.uid)
+        && profile.displayName is string
+        && profile.displayName.size() <= 80
+        && profile.email is string
+        && profile.role in ['member', 'pendingLawyer', 'lawyer', 'admin']
+        && profile.createdAt is timestamp
+        && profile.updatedAt is timestamp
+        && profile.deleted is bool;
+    }
+
+    function isValidConsultation(payload) {
+      return isSafeText(payload.topic, 120)
+        && payload.area in ['contracts', 'workplace', 'smallBusiness', 'cyber', 'other']
+        && isSafeText(payload.notes, 5000)
+        && payload.createdBy is string
+        && payload.clientName is string
+        && payload.clientName.size() <= 80
+        && payload.createdAt is timestamp
+        && payload.updatedAt is timestamp
+        && payload.status in ['open', 'closed']
+        && payload.deleted is bool;
+    }
+
+    function isValidReport(payload) {
+      return isSafeText(payload.title, 120)
+        && payload.category in ['fraud', 'harassment', 'discrimination', 'stolenBusinessData', 'other']
+        && isSafeText(payload.body, 5000)
+        && payload.reportedBy is string
+        && payload.reporterAlias is string
+        && payload.reporterAlias.size() <= 80
+        && payload.occurredAt is timestamp
+        && payload.createdAt is timestamp
+        && payload.status in ['open', 'reviewing', 'resolved']
+        && payload.deleted is bool
+        && (!('hasAttachment' in payload) || payload.hasAttachment is bool)
+        && (!('attachmentUrl' in payload) || payload.attachmentUrl is string)
+        && (!('attachmentPath' in payload) || payload.attachmentPath is string);
+    }
+
+    function isValidPost(payload) {
+      return isSafeText(payload.title, 160)
+        && isSafeText(payload.body, 5000)
+        && payload.createdBy is string
+        && payload.authorName is string
+        && payload.authorName.size() <= 80
+        && payload.flags is int
+        && payload.flags >= 0
+        && payload.removed is bool
+        && payload.createdAt is timestamp
+        && payload.updatedAt is timestamp;
+    }
+
+    function isValidComment(payload) {
+      return isSafeText(payload.body, 800)
+        && payload.postId is string
+        && payload.createdBy is string
+        && payload.authorName is string
+        && payload.authorName.size() <= 80
+        && payload.createdAt is timestamp
+        && payload.deleted is bool;
     }
 
     match /users/{uid} {
-      allow read: if signedIn();
-      allow create: if ownRecord(uid);
-      allow update: if ownRecord(uid)
-        && request.resource.data.role in ['member', 'lawyer', 'admin'];
+      allow read: if signedIn() && (isSelf(uid) || isLawyerOrAdmin());
+      allow create: if signedIn()
+        && isSelf(uid)
+        && isSafeProfile(request.resource.data)
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.role in ['member', 'pendingLawyer']
+        && request.resource.data.deleted == false;
+      allow update: if signedIn()
+        && (
+          (isSelf(uid) && request.resource.data.role == resource.data.role && isSafeProfile(request.resource.data))
+          || isLawyerOrAdmin()
+        );
       allow delete: if false;
     }
 
     match /consultations/{consultId} {
-      allow create: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && isValidConsultation(request.resource.data);
       allow read: if signedIn() && (
-        resource.data.createdBy == request.auth.uid || isLawyer()
+        resource.data.createdBy == request.auth.uid || isLawyerOrAdmin()
       );
       allow update: if signedIn() && (
-        resource.data.createdBy == request.auth.uid || isLawyer()
+        isValidConsultation(request.resource.data)
+        && (resource.data.createdBy == request.auth.uid || isLawyerOrAdmin())
       );
       allow delete: if false;
     }
 
     match /incidentReports/{reportId} {
-      allow create: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.reportedBy == request.auth.uid
+        && isValidReport(request.resource.data);
       allow read: if signedIn() && (
-        resource.data.reportedBy == request.auth.uid || isLawyer()
+        resource.data.reportedBy == request.auth.uid || isLawyerOrAdmin()
       );
       allow update: if signedIn() && (
-        resource.data.reportedBy == request.auth.uid || isLawyer()
+        isValidReport(request.resource.data)
+        && (resource.data.reportedBy == request.auth.uid || isLawyerOrAdmin())
       );
       allow delete: if false;
     }
 
     match /communityPosts/{postId} {
-      allow create: if signedIn();
-      allow read: if signedIn() && !(resource.data.removed == true);
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && isValidPost(request.resource.data);
+      allow read: if signedIn() && (
+        !resource.data.removed || isLawyerOrAdmin()
+      );
       allow update: if signedIn() && (
-        resource.data.createdBy == request.auth.uid || isLawyer()
+        isValidPost(request.resource.data)
+        && (resource.data.createdBy == request.auth.uid || isLawyerOrAdmin())
       );
       allow delete: if false;
     }
 
     match /communityComments/{commentId} {
-      allow create: if signedIn();
-      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && isValidComment(request.resource.data);
+      allow read: if signedIn() && (
+        !resource.data.deleted || isLawyerOrAdmin()
+      );
       allow update: if signedIn() && (
-        resource.data.createdBy == request.auth.uid || isLawyer()
+        isValidComment(request.resource.data)
+        && (resource.data.createdBy == request.auth.uid || isLawyerOrAdmin())
       );
       allow delete: if false;
     }

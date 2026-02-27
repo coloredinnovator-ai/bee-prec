@@ -1,5 +1,8 @@
 name: Deploy to Firebase Hosting
-
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: read
 on:
   push:
     branches:
@@ -9,23 +12,26 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - branch: main
+            channelId: live
+            target: bee-prec-site
+          - branch: MAROON-staging
+            channelId: live
+            target: bee-prec-site-staging
     steps:
       - uses: actions/checkout@v4
-      - name: Deploy production
-        if: github.ref == 'refs/heads/main'
+      - name: Deploy Firebase Hosting
+        if: |
+          github.ref == format('refs/heads/{0}', matrix.branch)
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
           firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_NANNY_TECH }}'
-          channelId: live
+          channelId: ${{ matrix.channelId }}
           projectId: nanny-tech
-          target: bee-prec-site
-      - name: Deploy staging
-        if: github.ref == 'refs/heads/MAROON-staging'
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_NANNY_TECH }}'
-          channelId: live
-          projectId: nanny-tech
-          target: bee-prec-site-staging
+          target: ${{ matrix.target }}

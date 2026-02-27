@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#1f2942" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; base-uri 'self'; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://*.gstatic.com https://*.google-analytics.com https://securetoken.googleapis.com; font-src 'self'; img-src 'self' data: https:; script-src 'self'; style-src 'self'; frame-ancestors 'none'; object-src 'none'; worker-src 'self';"
+    />
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="X-Frame-Options" content="DENY" />
     <title>Bee-Prec</title>
     <link rel="stylesheet" href="styles.css" />
     <script type="module" src="app.js" defer></script>

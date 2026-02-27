@@ -51,6 +51,23 @@ const state = {
 };
 
 const LAWYER_CODES = new Set(['BEEPREC-LAWYER', 'BEEPREC-LAWYER-2026']);
+const ALLOWED_ROLES = ['member', 'pendingLawyer'];
+const MAX_TEXT_LENGTH = 5000;
+const MAX_SHORT_TEXT = 120;
+const MAX_NAME_LENGTH = 80;
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+const ALLOWED_CONSULTATION_AREAS = new Set(['contracts', 'workplace', 'smallBusiness', 'cyber', 'other']);
+const ALLOWED_REPORT_CATEGORIES = new Set(['fraud', 'harassment', 'discrimination', 'stolenBusinessData', 'other']);
+const ALLOWED_ATTACHMENT_MIME = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+  'text/plain',
+  'text/csv',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+]);
 
 const el = (id) => document.getElementById(id);
 const toast = el('toast');
@@ -84,6 +101,31 @@ function roleIsLawyer() {
   return state.profile && (state.profile.role === 'lawyer' || state.profile.role === 'admin');
 }
 
+function sanitizeText(value = '', max = MAX_TEXT_LENGTH) {
+  return String(value).trim().slice(0, max);
+}
+
+function normalizeTimestampInput(input) {
+  const parsed = new Date(input);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return Timestamp.fromDate(parsed);
+}
+
+function normalizeFilename(fileName = '') {
+  const safe = fileName
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/^\.+/, '')
+    .slice(0, 120) || 'attachment';
+  return `${Date.now()}-${safe}`;
+}
+
+function validateUpload(file) {
+  if (!file) return { ok: false, reason: 'No file provided.' };
+  if (!ALLOWED_ATTACHMENT_MIME.has(file.type)) return { ok: false, reason: 'Unsupported file type.' };
+  if (file.size > MAX_ATTACHMENT_BYTES) return { ok: false, reason: 'File too large. Maximum is 5MB.' };
+  return { ok: true };
+}
+
 function setIdentity(profile, user) {
   if (!user) {
     state.user = null;
@@ -108,9 +150,14 @@ function clearList(elm) {
 
 async function tryUploadAttachment(file, reportId, reportedBy) {
   if (!file || !state.user) return null;
+  const validation = validateUpload(file);
+  if (!validation.ok) {
+    showToast(validation.reason);
+    return null;
+  }
   try {
-    const fileRef = ref(storage, `incidents/${reportedBy}/${reportId}/${file.name}`);
-    await uploadBytes(fileRef, file);
+    const fileRef = ref(storage, `incidents/${reportedBy}/${reportId}/${normalizeFilename(file.name)}`);
+    await uploadBytes(fileRef, file, { contentType: file.type });
     const attachmentUrl = await getDownloadURL(fileRef);
     return { attachmentUrl, attachmentPath: fileRef.fullPath, hasAttachment: true, fileName: file.name };
   } catch (error) {
@@ -157,7 +204,17 @@ function escapeText(v) {
 async function ensureProfile(user) {
   const refProfile = doc(db, 'users', user.uid);
   const snap = await getDoc(refProfile);
-  if (snap.exists()) return snap.data();
+  if (snap.exists()) {
+    const current = snap.data();
+    if (!ALLOWED_ROLES.includes(current.role) && current.role !== 'lawyer' && current.role !== 'admin') {
+      await updateDoc(refProfile, {
+        role: 'member',
+        updatedAt: serverTimestamp()
+      });
+      current.role = 'member';
+    }
+    return current;
+  }
   const userRole = 'member';
   const payload = {
     uid: user.uid,
@@ -233,7 +290,7 @@ async function loadReports() {
   for (const item of list) {
     const created = toDate(item.occurredAt)?.toLocaleString() || 'N/A';
     const attachment = item.attachmentUrl
-      ? `<a href="${item.attachmentUrl}" target="_blank" rel="noreferrer">attachment</a>`
+      ? `<a href="${escapeText(item.attachmentUrl)}" target="_blank" rel="noreferrer">attachment</a>`
       : 'no attachment';
     const listItem = renderItem({
       title: `${escapeText(item.title || 'Incident report')} · ${escapeText(item.category || 'uncategorized')}`,
@@ -383,18 +440,24 @@ async function loadPosts() {
     commentForm.appendChild(cBtn);
     commentForm.addEventListener('submit', async (ev) => {
       ev.preventDefault();
-      const body = commentInput.value.trim();
+      if (state.loading) return;
+      const body = sanitizeText(commentInput.value, 800);
       if (!body) return;
-      await addDoc(collection(db, 'communityComments'), {
-        postId: p.id,
-        body,
-        createdBy: state.user.uid,
-        authorName: state.profile.displayName || state.user.email,
-        createdAt: serverTimestamp(),
-        deleted: false
-      });
-      commentInput.value = '';
-      await loadPosts();
+      state.loading = true;
+      try {
+        await addDoc(collection(db, 'communityComments'), {
+          postId: p.id,
+          body,
+          createdBy: state.user.uid,
+          authorName: sanitizeText(state.profile?.displayName || state.user.email, MAX_NAME_LENGTH),
+          createdAt: serverTimestamp(),
+          deleted: false
+        });
+        commentInput.value = '';
+        await loadPosts();
+      } finally {
+        state.loading = false;
+      }
     });
     pItem.appendChild(commentForm);
     el('postFeed').appendChild(pItem);
@@ -547,11 +610,13 @@ async function setupEventHandlers() {
   el('registerForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (state.loading) return;
-    const displayName = el('regName').value.trim();
+    const displayName = sanitizeText(el('regName').value, MAX_NAME_LENGTH);
     const email = el('regEmail').value.trim();
     const password = el('regPassword').value;
     const role = el('regRole').value;
     const lawyerCode = el('regLawyerCode').value.trim();
+    if (!displayName || !email || !password) return showToast('Please complete all required fields.');
+    if (password.length < 8) return showToast('Password must be at least 8 characters.');
     if (role === 'lawyer' && !LAWYER_CODES.has(lawyerCode)) {
       showToast('Invalid lawyer code.');
       return;
@@ -560,11 +625,15 @@ async function setupEventHandlers() {
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(userCred.user, { displayName });
+      const isLawyer = role === 'lawyer';
       await setDoc(doc(db, 'users', userCred.user.uid), {
         uid: userCred.user.uid,
         email,
         displayName,
-        role,
+        role: isLawyer ? 'pendingLawyer' : 'member',
+        requestedRole: isLawyer ? 'lawyer' : 'member',
+        requiresApproval: isLawyer,
+        lawyerCodeUsed: isLawyer ? lawyerCode : null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         deleted: false
@@ -618,80 +687,105 @@ async function setupEventHandlers() {
 
   el('consultationForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (state.loading) return;
     if (!state.user) return showToast('Sign in required');
-    const topic = el('consultTopic').value.trim();
-    const notes = el('consultNotes').value.trim();
-    const area = el('consultArea').value;
-    await addDoc(collection(db, 'consultations'), {
-      topic,
-      area,
-      notes,
-      createdBy: state.user.uid,
-      clientName: state.profile.displayName || state.user.email,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      status: 'open',
-      deleted: false
-    });
-    e.target.reset();
-    await loadConsultations();
-    if (state.lawyerMode) await loadModerationConsults();
-    showToast('Consultation submitted');
+    const topic = sanitizeText(el('consultTopic').value, MAX_SHORT_TEXT);
+    const notes = sanitizeText(el('consultNotes').value, MAX_TEXT_LENGTH);
+    const area = sanitizeText(el('consultArea').value, 40);
+    if (!topic || !notes || !area) return showToast('Please complete all consultation fields.');
+    if (!ALLOWED_CONSULTATION_AREAS.has(area)) return showToast('Invalid consultation area.');
+    state.loading = true;
+    try {
+      await addDoc(collection(db, 'consultations'), {
+        topic,
+        area,
+        notes,
+        createdBy: state.user.uid,
+        clientName: sanitizeText(state.profile?.displayName || state.user.email, MAX_NAME_LENGTH),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        status: 'open',
+        deleted: false
+      });
+      e.target.reset();
+      await loadConsultations();
+      if (state.lawyerMode) await loadModerationConsults();
+      showToast('Consultation submitted');
+    } finally {
+      state.loading = false;
+    }
   });
 
   el('reportForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (state.loading) return;
     if (!state.user) return showToast('Sign in required');
-    const title = el('reportTitle').value.trim();
-    const category = el('reportCategory').value;
-    const body = el('reportBody').value.trim();
+    const title = sanitizeText(el('reportTitle').value, MAX_SHORT_TEXT);
+    const category = sanitizeText(el('reportCategory').value, 40);
+    const body = sanitizeText(el('reportBody').value, MAX_TEXT_LENGTH);
     const occurredAtValue = el('reportDate').value;
+    const occurredAt = normalizeTimestampInput(occurredAtValue);
     const file = el('reportFile').files?.[0];
     const reportedBy = state.user.uid;
-    const docRef = await addDoc(collection(db, 'incidentReports'), {
-      title,
-      category,
-      body,
-      reportedBy,
-      reporterAlias: state.profile.displayName || state.user.email,
-      createdAt: serverTimestamp(),
-      occurredAt: Timestamp.fromDate(new Date(occurredAtValue)),
-      status: 'open',
-      deleted: false
-    });
-    if (file) {
-      const attachment = await tryUploadAttachment(file, docRef.id, reportedBy);
-      if (attachment) {
-        await updateDoc(docRef, attachment);
-        showToast('Attachment uploaded successfully');
-      } else {
-        showToast('Report saved. Attachment upload is currently unavailable.');
+    if (!title || !category || !body || !occurredAtValue) return showToast('Please complete all report fields.');
+    if (!ALLOWED_REPORT_CATEGORIES.has(category)) return showToast('Invalid report category.');
+    if (!occurredAt) return showToast('Invalid report date/time.');
+    state.loading = true;
+    try {
+      const docRef = await addDoc(collection(db, 'incidentReports'), {
+        title,
+        category,
+        body,
+        reportedBy,
+        reporterAlias: sanitizeText(state.profile?.displayName || state.user.email, MAX_NAME_LENGTH),
+        createdAt: serverTimestamp(),
+        occurredAt,
+        status: 'open',
+        deleted: false
+      });
+      if (file) {
+        const attachment = await tryUploadAttachment(file, docRef.id, reportedBy);
+        if (attachment) {
+          await updateDoc(docRef, attachment);
+          showToast('Attachment uploaded successfully');
+        } else {
+          showToast('Report saved. Attachment upload is currently unavailable.');
+        }
       }
+      e.target.reset();
+      await loadReports();
+      if (state.lawyerMode) await loadModerationReports();
+      showToast('Report filed');
+    } finally {
+      state.loading = false;
     }
-    e.target.reset();
-    await loadReports();
-    if (state.lawyerMode) await loadModerationReports();
-    showToast('Report filed');
   });
 
   el('communityPostForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (state.loading) return;
     if (!state.user) return showToast('Sign in required');
-    const title = el('postTitle').value.trim();
-    const body = el('postBody').value.trim();
-    await addDoc(collection(db, 'communityPosts'), {
-      title,
-      body,
-      createdBy: state.user.uid,
-      authorName: state.profile.displayName || state.user.email,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      removed: false,
-      flags: 0
-    });
-    e.target.reset();
-    await loadPosts();
-    showToast('Post published');
+    const title = sanitizeText(el('postTitle').value, MAX_SHORT_TEXT);
+    const body = sanitizeText(el('postBody').value, MAX_TEXT_LENGTH);
+    if (!title || !body) return showToast('Please complete all post fields.');
+    state.loading = true;
+    try {
+      await addDoc(collection(db, 'communityPosts'), {
+        title,
+        body,
+        createdBy: state.user.uid,
+        authorName: sanitizeText(state.profile?.displayName || state.user.email, MAX_NAME_LENGTH),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        removed: false,
+        flags: 0
+      });
+      e.target.reset();
+      await loadPosts();
+      showToast('Post published');
+    } finally {
+      state.loading = false;
+    }
   });
 
   el('softDeleteMessagesBtn').addEventListener('click', async () => {
