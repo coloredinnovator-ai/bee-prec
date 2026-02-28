@@ -48,7 +48,7 @@ if [[ -n "${HOSTING_TARGET}" ]]; then
   firebase target:apply hosting "${HOSTING_TARGET}" "${HOSTING_TARGET}" >/dev/null 2>&1 || true
 fi
 
-echo "Bee-Prec web bootstrap complete."
+echo "BEE COOP web bootstrap complete."
 echo "Project: ${PROJECT_ID}"
 echo "Hosting target: ${HOSTING_TARGET}"
 echo "Public dir: ${PUBLIC_DIR}"

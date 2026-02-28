@@ -1,8 +1,8 @@
-# Bee-Prec Product Specification (Rewritten and Prioritized)
+# BEE COOP Product Specification (Rewritten and Prioritized)
 
 ## 1) Vision
 
-Bee-Prec is a cooperative legal services and community platform owned by a legal team, built to provide:
+BEE COOP is a cooperative legal services and community platform owned by a legal team, built to provide:
 
 - Accessible consultation pathways for people and businesses
 - A trusted channel for reporting misconduct and harm
@@ -14,7 +14,7 @@ The platform must feel safe, accountable, and professional while remaining easy 
 ## 2) Core user stories
 
 ### 2.1 Public visitor
-- Can learn what Bee-Prec is and how support works.
+- Can learn what BEE COOP is and how support works.
 - Can request a consultation without technical friction.
 - Can submit a report about a business or incident.
 - Can browse community posts, with visible safety standards.
@@ -110,4 +110,4 @@ The platform must feel safe, accountable, and professional while remaining easy 
 
 ## 7) Translation of your request (plain-language)
 
-Bee-Prec should be a professional, lawyer-owned platform where people can ask for legal help, report harmful business behavior or crimes, and engage in a safe community space. Users need control over their accounts and message history, including deletion where appropriate. The platform should be secure, auditable, and ready for real-world legal operations while staying simple to use.
+BEE COOP should be a professional, lawyer-owned platform where people can ask for legal help, report harmful business behavior or crimes, and engage in a safe community space. Users need control over their accounts and message history, including deletion where appropriate. The platform should be secure, auditable, and ready for real-world legal operations while staying simple to use.

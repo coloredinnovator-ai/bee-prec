@@ -1,4 +1,4 @@
-name: Bee-Prec production smoke checks
+name: BEE COOP production smoke checks
 
 on:
   schedule:
@@ -12,7 +12,7 @@ on:
       requireText:
         description: Required text on homepage
         required: false
-        default: Bee-Prec
+        default: BEE COOP
 
 jobs:
   smoke-test:
@@ -23,7 +23,7 @@ jobs:
       - name: Validate homepage
         env:
           TARGET_URL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.targetUrl || 'https://bee-prec-site.web.app' }}
-          REQUIRE_TEXT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.requireText || 'Bee-Prec' }}
+          REQUIRE_TEXT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.requireText || 'BEE COOP' }}
         run: |
           set -euo pipefail
           echo "Testing ${TARGET_URL}"

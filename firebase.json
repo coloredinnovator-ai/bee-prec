@@ -48,7 +48,7 @@
           ]
         },
         {
-          "source": "/app.js",
+          "source": "/site.js",
           "headers": [
             {
               "key": "Cache-Control",
@@ -115,7 +115,7 @@
           ]
         },
         {
-          "source": "/app.js",
+          "source": "/site.js",
           "headers": [
             {
               "key": "Cache-Control",

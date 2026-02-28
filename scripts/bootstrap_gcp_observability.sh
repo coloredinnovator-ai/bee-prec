@@ -5,8 +5,8 @@ PROJECT_ID="${1:-nanny-tech}"
 HOST="${2:-bee-prec-site.web.app}"
 ENVIRONMENT="${3:-production}"
 NOTIFICATION_CHANNEL="${4:-}"
-CHECK_DISPLAY_NAME="${5:-Bee-Prec ${ENVIRONMENT} uptime}"
-POLICY_DISPLAY_NAME="${6:-Bee-Prec ${ENVIRONMENT} availability}"
+CHECK_DISPLAY_NAME="${5:-BEE COOP ${ENVIRONMENT} uptime}"
+POLICY_DISPLAY_NAME="${6:-BEE COOP ${ENVIRONMENT} availability}"
 
 if [[ -z "${PROJECT_ID}" ]]; then
   echo "Usage: $0 <project_id> [host] [environment] [notification_channel] [check_display_name] [policy_display_name]"
@@ -34,7 +34,7 @@ if [[ -z "${UPTIME_CHECK_NAME}" ]]; then
     --status-codes=200 \
     --period=5 \
     --timeout=10 \
-    --user-labels=service=bee-prec,environment="${ENVIRONMENT}"
+    --user-labels=service=bee-coop,environment="${ENVIRONMENT}"
 else
   echo "Uptime check already exists: ${UPTIME_CHECK_NAME}"
 fi
@@ -50,8 +50,8 @@ if [[ -n "${NOTIFICATION_CHANNEL}" && -z "${POLICY_NAME}" ]]; then
     --display-name="${POLICY_DISPLAY_NAME}" \
     --combiner=OR \
     --documentation-format=text/markdown \
-    --documentation="Bee-Prec ${ENVIRONMENT} endpoint (${HOST}) failed the scheduled uptime check." \
-    --condition-display-name="Bee-Prec ${ENVIRONMENT} uptime failed" \
+    --documentation="BEE COOP ${ENVIRONMENT} endpoint (${HOST}) failed the scheduled uptime check." \
+    --condition-display-name="BEE COOP ${ENVIRONMENT} uptime failed" \
     --condition-filter="metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\" AND resource.label.host=\"${HOST}\"" \
     --duration=300s \
     --if="< 1" \

@@ -94,6 +94,53 @@ service cloud.firestore {
         && payload.deleted is bool;
     }
 
+    function isValidNewsletter(payload) {
+      return payload.email is string
+        && payload.email.size() >= 3
+        && payload.email.size() <= 160
+        && payload.email.matches('.*@.*\\..*')
+        && payload.emailLower is string
+        && payload.emailLower.size() == payload.email.size()
+        && payload.topics is list
+        && payload.topics.size() >= 1
+        && payload.topics.size() <= 5
+        && payload.topics.all(t, t in ['co-op-news', 'guides', 'coop-project-updates'])
+        && payload.consent is bool
+        && payload.consent == true
+        && payload.source is string
+        && payload.source.size() <= 120
+        && payload.status in ['active', 'unsubscribed']
+        && payload.createdAt is timestamp
+        && payload.updatedAt is timestamp;
+    }
+
+    function isValidClinic(payload) {
+      return payload.name is string
+        && payload.name.size() >= 1
+        && payload.name.size() <= 80
+        && payload.email is string
+        && payload.email.size() >= 3
+        && payload.email.size() <= 160
+        && payload.email.matches('.*@.*\\..*')
+        && payload.emailLower is string
+        && payload.emailLower.size() == payload.email.size()
+        && (!('organization' in payload) || (payload.organization is string && payload.organization.size() <= 120))
+        && (!('location' in payload) || (payload.location is string && payload.location.size() <= 120))
+        && payload.stage in ['idea', 'planning', 'pilot', 'ready-to-launch']
+        && payload.helpType in ['legal-coop-setup', 'governance', 'funding', 'member-structure', 'other']
+        && payload.description is string
+        && payload.description.size() >= 1
+        && payload.description.size() <= 1200
+        && (!('preferredContact' in payload) || (payload.preferredContact is string && payload.preferredContact.size() <= 120))
+        && payload.consent is bool
+        && payload.consent == true
+        && payload.status in ['received', 'in-review', 'closed']
+        && payload.source is string
+        && payload.source.size() <= 120
+        && payload.createdAt is timestamp
+        && payload.updatedAt is timestamp;
+    }
+
     match /users/{uid} {
       allow read: if signedIn() && (isSelf(uid) || isLawyerOrAdmin());
       allow create: if signedIn()
@@ -189,6 +236,20 @@ service cloud.firestore {
         && request.resource.data.updatedBy == request.auth.uid
         && request.resource.data.reviewedAt is timestamp
         && request.resource.data.reviewedBy == request.auth.uid;
+      allow delete: if false;
+    }
+
+    match /newsletterSubscribers/{subscriberId} {
+      allow create: if isValidNewsletter(request.resource.data);
+      allow update: if isValidNewsletter(request.resource.data)
+        && resource.data.emailLower == request.resource.data.emailLower;
+      allow read: if isLawyerOrAdmin();
+      allow delete: if false;
+    }
+
+    match /clinicSignups/{signupId} {
+      allow create: if isValidClinic(request.resource.data);
+      allow read, update: if isLawyerOrAdmin();
       allow delete: if false;
     }
   }

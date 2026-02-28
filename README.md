@@ -1,10 +1,11 @@
-# Bee-Prec
+# BEE COOP
 
-Client website repository for Bee-Prec.
+Client website repository for BEE COOP.
 
 ## Project scope
 
-- App: Bee-Prec community/legal co-op platform
+- Website: BEE COOP community/legal co-op platform
+- Not a native or hybrid app. This is strictly a website.
 - Firebase project: `nanny-tech`
 - Hosting targets:
   - production: `bee-prec-site`

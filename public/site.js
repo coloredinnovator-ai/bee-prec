@@ -44,7 +44,9 @@ const state = {
   user: null,
   profile: null,
   lawyerMode: false,
-  loading: false
+  loading: false,
+  lastNewsletterSubmit: 0,
+  lastClinicSubmit: 0
 };
 
 const LAWYER_CODES = new Set(['BEEPREC-LAWYER', 'BEEPREC-LAWYER-2026']);
@@ -68,6 +70,72 @@ const ALLOWED_ATTACHMENT_MIME = new Set([
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 ]);
+
+const ALLOWED_NEWSLETTER_TOPICS = new Set(['co-op-news', 'guides', 'coop-project-updates']);
+const ALLOWED_CLINIC_STAGE = new Set(['idea', 'planning', 'pilot', 'ready-to-launch']);
+const ALLOWED_CLINIC_HELP = new Set(['legal-coop-setup', 'governance', 'funding', 'member-structure', 'other']);
+
+const GUIDE_CONTENT = {
+  identity: {
+    title: 'Cooperative identity',
+    items: [
+      'Jointly-owned, democratically-controlled enterprise serving member needs.',
+      'Member economic participation and limited return on capital.',
+      'Education, training, and transparent information sharing.'
+    ]
+  },
+  principles: {
+    title: 'ICA values & principles',
+    items: [
+      'Voluntary and open membership',
+      'Democratic member control (one member, one vote)',
+      'Member economic participation',
+      'Autonomy and independence',
+      'Education, training, information',
+      'Cooperation among co-ops',
+      'Concern for community'
+    ]
+  },
+  cases: {
+    title: 'Case snapshots',
+    items: [
+      'Mondragon (worker co-op federation, Spain)',
+      'Arizmendi Bakeries (worker co-op network, US)',
+      'Suma Wholefoods (equal pay, UK)',
+      'Co-op Home Care (care worker ownership, US)',
+      'The Working World (non-extractive finance)'
+    ]
+  },
+  resources: {
+    title: 'Key resources',
+    items: [
+      'ICA Statement on the Cooperative Identity',
+      'US Federation of Worker Cooperatives (USFWC) guides',
+      'National Cooperative Business Association (NCBA) toolkit',
+      'Platform Co-op Consortium playbooks',
+      'Community-wealth.org knowledge base'
+    ]
+  },
+  books: {
+    title: 'Reading list',
+    items: [
+      'Humanizing the Economy — John Restakis',
+      'Collective Courage — Jessica Gordon Nembhard',
+      'Everything for Everyone — Nathan Schneider',
+      'Ours to Hack and to Own — Trebor Scholz',
+      'Think Like a Commoner — David Bollier'
+    ]
+  },
+  history: {
+    title: 'Co-op history',
+    items: [
+      '1844: Rochdale Pioneers articulate the modern principles.',
+      '20th c: Global spread of credit unions, ag and worker co-ops.',
+      'Present: Platform co-ops, community land trusts, energy co-ops.',
+      'Future: Data trusts and AI-era democratic ownership experiments.'
+    ]
+  }
+};
 
 const el = (id) => document.getElementById(id);
 const toast = el('toast');
@@ -105,6 +173,14 @@ function sanitizeText(value = '', max = MAX_TEXT_LENGTH) {
   return String(value).trim().slice(0, max);
 }
 
+function sanitizeEmail(email = '') {
+  return String(email).trim().toLowerCase();
+}
+
+function isValidEmail(email = '') {
+  return /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email);
+}
+
 function normalizeTimestampInput(input) {
   const parsed = new Date(input);
   if (Number.isNaN(parsed.getTime())) return null;
@@ -130,7 +206,7 @@ function setIdentity(profile, user) {
   if (!user) {
     state.user = null;
     state.profile = null;
-    conn.textContent = 'Firebase disconnected';
+    conn.textContent = 'Public mode';
     userBadge.textContent = 'Not signed in';
     document.getElementById('logoutBtn').disabled = true;
     return;
@@ -201,6 +277,23 @@ function escapeText(v) {
   });
 }
 
+function renderGuideCard(targetId, title, items = []) {
+  const root = el(targetId);
+  if (!root) return;
+  root.innerHTML = `<h3>${title}</h3><ul class=\"guide-list\">${items
+    .map((item) => `<li>${escapeText(item)}</li>`)
+    .join('')}</ul>`;
+}
+
+function renderGuide() {
+  renderGuideCard('guideIdentity', GUIDE_CONTENT.identity.title, GUIDE_CONTENT.identity.items);
+  renderGuideCard('guidePrinciples', GUIDE_CONTENT.principles.title, GUIDE_CONTENT.principles.items);
+  renderGuideCard('guideCases', GUIDE_CONTENT.cases.title, GUIDE_CONTENT.cases.items);
+  renderGuideCard('guideResources', GUIDE_CONTENT.resources.title, GUIDE_CONTENT.resources.items);
+  renderGuideCard('guideBooks', GUIDE_CONTENT.books.title, GUIDE_CONTENT.books.items);
+  renderGuideCard('guideHistory', GUIDE_CONTENT.history.title, GUIDE_CONTENT.history.items);
+}
+
 async function ensureProfile(user) {
   const refProfile = doc(db, 'users', user.uid);
   const snap = await getDoc(refProfile);
@@ -229,6 +322,102 @@ async function ensureProfile(user) {
   return payload;
 }
 
+async function createNewsletterSubscriber(payload) {
+  const safeId = `email-${payload.emailLower.replace(/[^a-z0-9]/gi, '-')}`.toLowerCase();
+  const docRef = doc(db, 'newsletterSubscribers', safeId);
+  await setDoc(docRef, payload, { merge: true });
+  return { already: false };
+}
+
+async function submitNewsletter(event) {
+  event.preventDefault();
+  if (state.loading) return;
+  const now = Date.now();
+  if (now - state.lastNewsletterSubmit < 60_000) return showToast('Please wait a moment before submitting again.');
+
+  const email = sanitizeEmail(el('newsletterEmail')?.value || '');
+  const displayName = sanitizeText(el('newsletterName')?.value || '', MAX_NAME_LENGTH);
+  const consent = !!el('newsletterConsent')?.checked;
+  const topics = Array.from(document.querySelectorAll('input[name=\"newsletterTopic\"]:checked')).map((n) => n.value);
+
+  if (!isValidEmail(email)) return showToast('Enter a valid email.');
+  if (!consent) return showToast('Consent is required.');
+  if (!topics.length) return showToast('Choose at least one topic.');
+  const filteredTopics = topics.filter((t) => ALLOWED_NEWSLETTER_TOPICS.has(t));
+  if (!filteredTopics.length) return showToast('Select valid topics.');
+
+  state.loading = true;
+  try {
+    const payload = {
+      email,
+      emailLower: email,
+      displayName,
+      topics: filteredTopics,
+      consent: true,
+      source: 'site',
+      status: 'active',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    const res = await createNewsletterSubscriber(payload);
+    state.lastNewsletterSubmit = Date.now();
+    (document.getElementById('newsletterForm') || {}).reset?.();
+    showToast(res.already ? 'You are already subscribed. Updated your preferences.' : 'Subscribed to BEE COOP.');
+  } catch (e) {
+    showToast('Could not save newsletter signup right now.');
+  } finally {
+    state.loading = false;
+  }
+}
+
+async function submitClinic(event) {
+  event.preventDefault();
+  if (state.loading) return;
+  const now = Date.now();
+  if (now - state.lastClinicSubmit < 60_000) return showToast('Please wait a moment before submitting again.');
+
+  const name = sanitizeText(el('clinicName')?.value || '', MAX_NAME_LENGTH);
+  const email = sanitizeEmail(el('clinicEmail')?.value || '');
+  const organization = sanitizeText(el('clinicOrg')?.value || '', 120);
+  const location = sanitizeText(el('clinicLocation')?.value || '', 120);
+  const stage = sanitizeText(el('clinicStage')?.value || '', 40);
+  const helpType = sanitizeText(el('clinicHelpType')?.value || '', 40);
+  const preferredContact = sanitizeText(el('clinicContact')?.value || '', MAX_NAME_LENGTH);
+  const description = sanitizeText(el('clinicDescription')?.value || '', 1200);
+  const consent = !!el('clinicConsent')?.checked;
+
+  if (!name || !description || !isValidEmail(email)) return showToast('Name, email, and description are required.');
+  if (!ALLOWED_CLINIC_STAGE.has(stage)) return showToast('Select a valid stage.');
+  if (!ALLOWED_CLINIC_HELP.has(helpType)) return showToast('Select a valid help type.');
+  if (!consent) return showToast('Consent is required to contact you.');
+
+  state.loading = true;
+  try {
+    await addDoc(collection(db, 'clinicSignups'), {
+      name,
+      email,
+      emailLower: email,
+      organization,
+      location,
+      stage,
+      helpType,
+      preferredContact,
+      description,
+      consent: true,
+      status: 'received',
+      source: 'BEE COOP Clinic',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    state.lastClinicSubmit = Date.now();
+    (document.getElementById('clinicForm') || {}).reset?.();
+    showToast('Clinic request received. We will contact you soon.');
+  } catch (e) {
+    showToast('Could not submit clinic request right now.');
+  } finally {
+    state.loading = false;
+  }
+}
 async function loadConsultations() {
   clearList(el('consultList'));
   const snap = await getDocs(query(collection(db, 'consultations'), orderBy('createdAt', 'desc')));
@@ -680,6 +869,46 @@ async function loadModerationDeletionRequests() {
   }
 }
 
+async function loadModerationNewsletter() {
+  clearList(el('moderationNewsletter'));
+  if (!state.lawyerMode) return;
+  const snap = await getDocs(query(collection(db, 'newsletterSubscribers'), orderBy('createdAt', 'desc')));
+  const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
+  if (!items.length) {
+    el('moderationNewsletter').innerHTML = '<p class=\"muted\">No newsletter submissions yet.</p>';
+    return;
+  }
+  for (const item of items) {
+    const created = toDate(item.createdAt)?.toLocaleString() || 'N/A';
+    const row = renderItem({
+      title: `${escapeText(item.email || 'email')}`,
+      body: escapeText((item.topics || []).join(', ') || 'topics not set'),
+      meta: `${escapeText(item.status || 'active')} · ${created}`
+    });
+    el('moderationNewsletter').appendChild(row);
+  }
+}
+
+async function loadModerationClinic() {
+  clearList(el('moderationClinic'));
+  if (!state.lawyerMode) return;
+  const snap = await getDocs(query(collection(db, 'clinicSignups'), orderBy('createdAt', 'desc')));
+  const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
+  if (!items.length) {
+    el('moderationClinic').innerHTML = '<p class=\"muted\">No clinic submissions yet.</p>';
+    return;
+  }
+  for (const item of items) {
+    const created = toDate(item.createdAt)?.toLocaleString() || 'N/A';
+    const row = renderItem({
+      title: `${escapeText(item.name || 'Clinic lead')} · ${escapeText(item.stage || '')}`,
+      body: escapeText(item.description || ''),
+      meta: `${escapeText(item.email || '')} · ${escapeText(item.helpType || '')} · ${created}`
+    });
+    el('moderationClinic').appendChild(row);
+  }
+}
+
 async function loadDashboardData() {
   if (!state.user) return;
   await Promise.all([loadConsultations(), loadReports(), loadPosts()]);
@@ -689,7 +918,9 @@ async function loadDashboardData() {
       loadModerationReports(),
       loadModerationPosts(),
       loadModerationLawyers(),
-      loadModerationDeletionRequests()
+      loadModerationDeletionRequests(),
+      loadModerationNewsletter(),
+      loadModerationClinic()
     ]);
   }
 }
@@ -712,6 +943,8 @@ async function deleteCurrentUserContent() {
 }
 
 async function setupEventHandlers() {
+  renderGuide();
+
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       showSection(btn.dataset.tab);
@@ -960,6 +1193,16 @@ async function setupEventHandlers() {
       state.loading = false;
     }
   });
+
+  const newsletterForm = el('newsletterForm');
+  if (newsletterForm) {
+    newsletterForm.addEventListener('submit', submitNewsletter);
+  }
+
+  const clinicForm = el('clinicForm');
+  if (clinicForm) {
+    clinicForm.addEventListener('submit', submitClinic);
+  }
 }
 
 onAuthStateChanged(auth, async (user) => {

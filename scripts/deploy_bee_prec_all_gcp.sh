@@ -24,10 +24,10 @@ if [[ ! -d "${SCRIPT_DIR}/../${PUBLIC_DIR}" ]]; then
   exit 1
 fi
 
-echo "Deploying Bee-Prec production..."
+echo "Deploying BEE COOP production..."
 "${DEPLOY_SCRIPT}" "${PROJECT_ID}" "bee-prec-site" "${PUBLIC_DIR}"
 
-echo "Deploying Bee-Prec staging..."
+echo "Deploying BEE COOP staging..."
 "${DEPLOY_SCRIPT}" "${PROJECT_ID}" "bee-prec-site-staging" "${PUBLIC_DIR}"
 
 echo "Deployment complete for project ${PROJECT_ID}."

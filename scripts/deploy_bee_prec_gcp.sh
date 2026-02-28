@@ -32,8 +32,8 @@ if [[ ! -f "${PUBLIC_DIR}/index.html" ]]; then
   exit 1
 fi
 
-if [[ ! -f "${PUBLIC_DIR}/app.js" ]]; then
-  echo "Error: expected app.js in ${PUBLIC_DIR}."
+if [[ ! -f "${PUBLIC_DIR}/site.js" ]]; then
+  echo "Error: expected site.js in ${PUBLIC_DIR}."
   exit 1
 fi
 
@@ -44,7 +44,7 @@ if [[ ! -f "${PUBLIC_DIR}/index.html" ]]; then
 fi
 cd - >/dev/null
 
-echo "Deploying Bee-Prec web to hosting target '${HOSTING_TARGET}' in project '${PROJECT_ID}'."
+echo "Deploying BEE COOP web to hosting target '${HOSTING_TARGET}' in project '${PROJECT_ID}'."
 firebase deploy \
   --project "${PROJECT_ID}" \
   --only "hosting:${HOSTING_TARGET}" \
