@@ -494,9 +494,8 @@ button.danger {
   border-radius: var(--radius);
   pointer-events: none;
   opacity: 0.4;
-  background-image:
-    url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"200\" viewBox=\"0 0 200 200\" fill=\"none\" stroke=\"rgba(224,205,170,0.5)\" stroke-width=\"6\"><path d=\"M20 30 Q100 10 180 30\"/><path d=\"M20 170 Q100 190 180 170\"/><path d=\"M40 30 L20 100 L40 170\"/><path d=\"M160 30 L180 100 L160 170\"/><circle cx=\"100\" cy=\"40\" r=\"12\"/><circle cx=\"100\" cy=\"160\" r=\"12\"/><path d=\"M70 70 Q100 40 130 70\"/><path d=\"M70 130 Q100 160 130 130\"/><path d=\"M20 100 L180 100\"/></svg>');
-  background-size: contain;
+  background-image: url('/assets/motif-aleut.svg');
+  background-size: cover;
   background-repeat: no-repeat;
   background-position: center;
   display: none;
