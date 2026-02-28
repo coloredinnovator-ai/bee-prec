@@ -1,11 +1,8 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
   createUserWithEmailAndPassword,
-  deleteUser,
-  EmailAuthProvider,
   getAuth,
   onAuthStateChanged,
-  reauthenticateWithCredential,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
@@ -27,7 +24,7 @@ import {
   updateDoc,
   where
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
-import { deleteObject, getDownloadURL, getStorage, ref, uploadBytes } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js';
+import { getDownloadURL, getStorage, ref, uploadBytes } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyB6xFIHo1dScHVia598sWrfJ90OVms0U8E',
@@ -55,9 +52,12 @@ const ALLOWED_ROLES = ['member', 'pendingLawyer'];
 const MAX_TEXT_LENGTH = 5000;
 const MAX_SHORT_TEXT = 120;
 const MAX_NAME_LENGTH = 80;
+const MAX_REASON_LENGTH = 1200;
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const ALLOWED_CONSULTATION_AREAS = new Set(['contracts', 'workplace', 'smallBusiness', 'cyber', 'other']);
+const ALLOWED_CONSULTATION_URGENCY = new Set(['low', 'normal', 'high', 'critical']);
 const ALLOWED_REPORT_CATEGORIES = new Set(['fraud', 'harassment', 'discrimination', 'stolenBusinessData', 'other']);
+const ALLOWED_REPORT_PRIORITIES = new Set(['low', 'medium', 'high']);
 const ALLOWED_ATTACHMENT_MIME = new Set([
   'image/jpeg',
   'image/png',
@@ -288,14 +288,17 @@ async function loadReports() {
   }
   clearList(el('reportList'));
   for (const item of list) {
+    const alias = item.anonymous ? 'Anonymous' : item.reporterAlias || state.user.email;
+    const business = item.businessName ? ` · ${escapeText(item.businessName)}` : '';
+    const location = item.location ? ` · ${escapeText(item.location)}` : '';
     const created = toDate(item.occurredAt)?.toLocaleString() || 'N/A';
     const attachment = item.attachmentUrl
       ? `<a href="${escapeText(item.attachmentUrl)}" target="_blank" rel="noreferrer">attachment</a>`
       : 'no attachment';
     const listItem = renderItem({
       title: `${escapeText(item.title || 'Incident report')} · ${escapeText(item.category || 'uncategorized')}`,
-      body: `${escapeText(item.body || '')}<br/>${escapeText(item.reporterAlias || '')} · Attachment: ${attachment}`,
-      meta: `${escapeText(item.reportedBy || '')} · status: ${escapeText(item.status || 'open')} · ${created}`,
+      body: `${escapeText(item.body || '')}<br/>${escapeText(alias || '')} · Attachment: ${attachment}`,
+      meta: `Priority: ${escapeText(item.priority || 'medium')}${business}${location} · status: ${escapeText(item.status || 'open')} · ${created}`,
       actions: state.lawyerMode
         ? [
             {
@@ -570,11 +573,124 @@ async function loadModerationPosts() {
   }
 }
 
+async function loadModerationLawyers() {
+  clearList(el('moderationLawyers'));
+  if (!state.lawyerMode) return;
+  const snap = await getDocs(query(collection(db, 'users'), where('role', '==', 'pendingLawyer'), orderBy('createdAt', 'desc')));
+  const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
+  if (!items.length) {
+    el('moderationLawyers').innerHTML = '<p class="muted">No lawyer requests pending.</p>';
+    return;
+  }
+  for (const item of items) {
+    const row = renderItem({
+      title: `Lawyer request: ${escapeText(item.displayName || item.email || item.uid || 'Unknown')}`,
+      body: `${escapeText(item.email || '')} · code: ${escapeText(item.lawyerCodeUsed || 'none')}`,
+      meta: `uid: ${escapeText(item.uid || '')}`,
+      actions: [
+        {
+          label: 'Approve',
+          onClick: async () => {
+            await updateDoc(doc(db, 'users', item.id), {
+              role: 'lawyer',
+              requiresApproval: false,
+              approvedBy: state.user.uid,
+              approvedAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+            await loadModerationLawyers();
+            await loadDashboardData();
+          }
+        },
+        {
+          label: 'Reject',
+          onClick: async () => {
+            await updateDoc(doc(db, 'users', item.id), {
+              role: 'member',
+              requestedRole: 'member',
+              requiresApproval: false,
+              rejectedBy: state.user.uid,
+              rejectedAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+            await loadModerationLawyers();
+          }
+        }
+      ]
+    });
+    el('moderationLawyers').appendChild(row);
+  }
+}
+
+async function loadModerationDeletionRequests() {
+  clearList(el('moderationDeletionRequests'));
+  if (!state.lawyerMode) return;
+  const snap = await getDocs(query(collection(db, 'deletionRequests'), orderBy('requestedAt', 'desc')));
+  const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
+  if (!items.length) {
+    el('moderationDeletionRequests').innerHTML = '<p class="muted">No account deletion requests.</p>';
+    return;
+  }
+  for (const item of items) {
+    const isPending = item.status !== 'approved' && item.status !== 'rejected';
+    const row = renderItem({
+      title: `Account deletion: ${escapeText(item.requesterAlias || item.requesterId || 'unknown')}`,
+      body: escapeText(item.reason || ''),
+      meta: `status: ${escapeText(item.status || 'pending')} · ${escapeText(item.requesterEmail || '')}`,
+      actions: isPending
+        ? [
+            {
+              label: 'Approve',
+              className: 'danger',
+              onClick: async () => {
+                await updateDoc(doc(db, 'deletionRequests', item.id), {
+                  status: 'approved',
+                  reviewedAt: serverTimestamp(),
+                  reviewedBy: state.user.uid,
+                  reviewedByName: sanitizeText(state.profile?.displayName || state.user.email, MAX_NAME_LENGTH),
+                  updatedAt: serverTimestamp()
+                });
+                await updateDoc(doc(db, 'users', item.requesterId), {
+                  deleted: true,
+                  deletedAt: serverTimestamp(),
+                  deletedReason: sanitizeText(item.reason || '', MAX_REASON_LENGTH),
+                  updatedAt: serverTimestamp()
+                });
+                await loadModerationDeletionRequests();
+                await loadDashboardData();
+              }
+            },
+            {
+              label: 'Reject',
+              onClick: async () => {
+                await updateDoc(doc(db, 'deletionRequests', item.id), {
+                  status: 'rejected',
+                  reviewedAt: serverTimestamp(),
+                  reviewedBy: state.user.uid,
+                  reviewedByName: sanitizeText(state.profile?.displayName || state.user.email, MAX_NAME_LENGTH),
+                  updatedAt: serverTimestamp()
+                });
+                await loadModerationDeletionRequests();
+              }
+            }
+          ]
+        : []
+    });
+    el('moderationDeletionRequests').appendChild(row);
+  }
+}
+
 async function loadDashboardData() {
   if (!state.user) return;
   await Promise.all([loadConsultations(), loadReports(), loadPosts()]);
   if (state.lawyerMode) {
-    await Promise.all([loadModerationConsults(), loadModerationReports(), loadModerationPosts()]);
+    await Promise.all([
+      loadModerationConsults(),
+      loadModerationReports(),
+      loadModerationPosts(),
+      loadModerationLawyers(),
+      loadModerationDeletionRequests()
+    ]);
   }
 }
 
@@ -603,6 +719,8 @@ async function setupEventHandlers() {
         loadModerationConsults();
         loadModerationReports();
         loadModerationPosts();
+        loadModerationLawyers();
+        loadModerationDeletionRequests();
       }
     });
   });
@@ -692,14 +810,20 @@ async function setupEventHandlers() {
     const topic = sanitizeText(el('consultTopic').value, MAX_SHORT_TEXT);
     const notes = sanitizeText(el('consultNotes').value, MAX_TEXT_LENGTH);
     const area = sanitizeText(el('consultArea').value, 40);
+    const urgency = sanitizeText(el('consultUrgency').value, 20);
+    const preferredContact = sanitizeText(el('consultContact').value, MAX_NAME_LENGTH);
     if (!topic || !notes || !area) return showToast('Please complete all consultation fields.');
     if (!ALLOWED_CONSULTATION_AREAS.has(area)) return showToast('Invalid consultation area.');
+    if (!ALLOWED_CONSULTATION_URGENCY.has(urgency)) return showToast('Invalid consultation urgency.');
+    if (!preferredContact) return showToast('Preferred contact is required.');
     state.loading = true;
     try {
       await addDoc(collection(db, 'consultations'), {
         topic,
         area,
         notes,
+        urgency,
+        preferredContact,
         createdBy: state.user.uid,
         clientName: sanitizeText(state.profile?.displayName || state.user.email, MAX_NAME_LENGTH),
         createdAt: serverTimestamp(),
@@ -722,6 +846,10 @@ async function setupEventHandlers() {
     if (!state.user) return showToast('Sign in required');
     const title = sanitizeText(el('reportTitle').value, MAX_SHORT_TEXT);
     const category = sanitizeText(el('reportCategory').value, 40);
+    const priority = sanitizeText(el('reportPriority').value, 20);
+    const businessName = sanitizeText(el('reportBusiness').value, MAX_NAME_LENGTH);
+    const location = sanitizeText(el('reportLocation').value, MAX_NAME_LENGTH);
+    const anonymous = !!el('reportAnonymous').checked;
     const body = sanitizeText(el('reportBody').value, MAX_TEXT_LENGTH);
     const occurredAtValue = el('reportDate').value;
     const occurredAt = normalizeTimestampInput(occurredAtValue);
@@ -729,6 +857,7 @@ async function setupEventHandlers() {
     const reportedBy = state.user.uid;
     if (!title || !category || !body || !occurredAtValue) return showToast('Please complete all report fields.');
     if (!ALLOWED_REPORT_CATEGORIES.has(category)) return showToast('Invalid report category.');
+    if (!ALLOWED_REPORT_PRIORITIES.has(priority)) return showToast('Invalid report priority.');
     if (!occurredAt) return showToast('Invalid report date/time.');
     state.loading = true;
     try {
@@ -736,6 +865,10 @@ async function setupEventHandlers() {
         title,
         category,
         body,
+        priority,
+        businessName,
+        location,
+        anonymous,
         reportedBy,
         reporterAlias: sanitizeText(state.profile?.displayName || state.user.email, MAX_NAME_LENGTH),
         createdAt: serverTimestamp(),
@@ -795,15 +928,37 @@ async function setupEventHandlers() {
     showToast('Your recent data was archived');
   });
 
-  el('deleteAccountBtn').addEventListener('click', async () => {
-    const password = el('deleteAccountPassword').value;
-    if (!password) return showToast('Enter re-auth password');
-    const credential = EmailAuthProvider.credential(state.user.email, password);
-    await reauthenticateWithCredential(state.user, credential);
-    await deleteCurrentUserContent();
-    await deleteUser(state.user);
-    showToast('Account deleted');
-    await signOut(auth);
+  el('deletionRequestBtn').addEventListener('click', async () => {
+    if (!state.user) return showToast('Sign in required');
+    const reason = sanitizeText(el('deletionReason').value, MAX_REASON_LENGTH);
+    if (!reason) return showToast('Please provide a reason.');
+    const pending = await getDocs(
+      query(
+        collection(db, 'deletionRequests'),
+        where('requesterId', '==', state.user.uid),
+        where('status', '==', 'pending')
+      )
+    );
+    if (!pending.empty) return showToast('You already have a pending deletion request.');
+    state.loading = true;
+    try {
+      await addDoc(collection(db, 'deletionRequests'), {
+        requesterId: state.user.uid,
+        requesterAlias: sanitizeText(state.profile?.displayName || state.user.email, MAX_NAME_LENGTH),
+        requesterEmail: sanitizeText(state.user.email || '', 160),
+        reason,
+        status: 'pending',
+        requestedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        updatedBy: state.user.uid
+      });
+      el('deletionReason').value = '';
+      showToast('Deletion request submitted');
+    } catch (e) {
+      showToast(e.message);
+    } finally {
+      state.loading = false;
+    }
   });
 }
 
@@ -817,12 +972,19 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
   const profile = await ensureProfile(user);
+  if (profile && profile.deleted) {
+    showToast('This account is deactivated.');
+    await signOut(auth);
+    return;
+  }
   setIdentity(profile, user);
   await loadDashboardData();
   if (state.lawyerMode) {
     await loadModerationConsults();
     await loadModerationReports();
     await loadModerationPosts();
+    await loadModerationLawyers();
+    await loadModerationDeletionRequests();
   }
 });
 

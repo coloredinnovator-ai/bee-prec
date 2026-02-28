@@ -39,10 +39,12 @@ service cloud.firestore {
     function isValidConsultation(payload) {
       return isSafeText(payload.topic, 120)
         && payload.area in ['contracts', 'workplace', 'smallBusiness', 'cyber', 'other']
+        && payload.urgency in ['low', 'normal', 'high', 'critical']
         && isSafeText(payload.notes, 5000)
         && payload.createdBy is string
         && payload.clientName is string
         && payload.clientName.size() <= 80
+        && isSafeText(payload.preferredContact, 80)
         && payload.createdAt is timestamp
         && payload.updatedAt is timestamp
         && payload.status in ['open', 'closed']
@@ -52,12 +54,16 @@ service cloud.firestore {
     function isValidReport(payload) {
       return isSafeText(payload.title, 120)
         && payload.category in ['fraud', 'harassment', 'discrimination', 'stolenBusinessData', 'other']
+        && (!('businessName' in payload) || (payload.businessName is string && payload.businessName.size() <= 80))
+        && (!('location' in payload) || (payload.location is string && payload.location.size() <= 80))
         && isSafeText(payload.body, 5000)
         && payload.reportedBy is string
         && payload.reporterAlias is string
         && payload.reporterAlias.size() <= 80
         && payload.occurredAt is timestamp
         && payload.createdAt is timestamp
+        && payload.anonymous is bool
+        && payload.priority in ['low', 'medium', 'high']
         && payload.status in ['open', 'reviewing', 'resolved']
         && payload.deleted is bool
         && (!('hasAttachment' in payload) || payload.hasAttachment is bool)
@@ -157,6 +163,32 @@ service cloud.firestore {
         isValidComment(request.resource.data)
         && (resource.data.createdBy == request.auth.uid || isLawyerOrAdmin())
       );
+      allow delete: if false;
+    }
+
+    match /deletionRequests/{requestId} {
+      allow create: if signedIn()
+        && request.resource.data.requesterId == request.auth.uid
+        && request.resource.data.requesterAlias is string
+        && request.resource.data.requesterAlias.size() <= 80
+        && request.resource.data.requesterEmail is string
+        && request.resource.data.requesterEmail.size() <= 160
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() <= 1200
+        && request.resource.data.reason.size() >= 1
+        && request.resource.data.status == 'pending'
+        && request.resource.data.requestedAt is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.updatedBy == request.auth.uid;
+      allow read: if isLawyerOrAdmin() || isSelf(resource.data.requesterId);
+      allow update: if isLawyerOrAdmin()
+        && request.resource.data.status in ['pending', 'approved', 'rejected']
+        && request.resource.data.requesterId is string
+        && request.resource.data.requestedAt is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.reviewedAt is timestamp
+        && request.resource.data.reviewedBy == request.auth.uid;
       allow delete: if false;
     }
   }
