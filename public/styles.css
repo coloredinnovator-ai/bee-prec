@@ -1,17 +1,17 @@
 :root {
   --bg: #0b0c10;
-  --bg-2: #11141f;
-  --surface: #0f1526;
-  --surface-2: #111827;
-  --surface-3: #1b2336;
-  --text: #e5e7eb;
-  --muted: #9ca3af;
-  --accent: #f6c344;
-  --accent-2: #16a34a;
-  --danger: #b91c1c;
-  --red: #b91c1c;
-  --yellow: #f6c344;
-  --green: #16a34a;
+  --bg-2: #0f1317;
+  --surface: #101820;
+  --surface-2: #111f1a;
+  --surface-3: #1a2320;
+  --text: #e7efe8;
+  --muted: #9fb3a5;
+  --accent: #f0b429; /* Via Campesina yellow */
+  --accent-2: #2d6a4f; /* MST green */
+  --danger: #b22222; /* earth red */
+  --red: #b22222;
+  --yellow: #f0b429;
+  --green: #2d6a4f;
   --radius: 14px;
   --shadow: 0 14px 48px rgba(0, 0, 0, 0.35);
   --font-display: 'Space Grotesk', 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -27,9 +27,9 @@ body {
   font-family: var(--font-display);
   color: var(--text);
   background:
-    radial-gradient(circle at 10% 20%, rgba(246, 195, 68, 0.08), transparent 28%),
-    radial-gradient(circle at 80% 0%, rgba(185, 28, 28, 0.12), transparent 36%),
-    linear-gradient(135deg, #0a0b12 0%, #0b1221 45%, #0d1a2f 100%);
+    radial-gradient(circle at 12% 20%, rgba(240, 180, 41, 0.12), transparent 32%),
+    radial-gradient(circle at 82% 8%, rgba(45, 106, 79, 0.14), transparent 36%),
+    linear-gradient(135deg, #0c0f12 0%, #11171c 45%, #0f1916 100%);
   position: relative;
 }
 
@@ -65,8 +65,8 @@ a:hover {
   align-items: center;
   gap: 1rem;
   padding: 1rem 1.25rem;
-  background: rgba(17, 24, 39, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 24, 20, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   backdrop-filter: blur(12px);
@@ -159,14 +159,14 @@ a:hover {
 }
 
 .cta.primary {
-  background: linear-gradient(90deg, var(--yellow), #ffd166);
-  color: #111;
-  box-shadow: 0 12px 30px rgba(246, 195, 68, 0.35);
+  background: linear-gradient(90deg, var(--red), var(--yellow));
+  color: #0b0c10;
+  box-shadow: 0 12px 30px rgba(240, 180, 41, 0.35);
 }
 
 .cta.ghost {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .cta.text {
@@ -194,11 +194,11 @@ a:hover {
   height: 160px;
   border-radius: 50%;
   background: radial-gradient(circle at 30% 30%, rgba(246, 195, 68, 0.35), transparent 50%), var(--surface-3);
-  border: 3px solid var(--yellow);
+  border: 3px solid var(--green);
   display: grid;
   place-items: center;
   position: relative;
-  box-shadow: 0 12px 34px rgba(246, 195, 68, 0.25);
+  box-shadow: 0 12px 34px rgba(45, 106, 79, 0.25);
 }
 
 .bee-wing {
@@ -232,7 +232,7 @@ a:hover {
 }
 
 .bee-stripe.dark { background: var(--red); }
-.bee-stripe.light { background: #ffe59e; }
+.bee-stripe.light { background: #ffe9b8; }
 
 .bee-tagline {
   color: var(--muted);
