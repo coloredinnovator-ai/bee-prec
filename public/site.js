@@ -139,6 +139,57 @@ const GUIDE_CONTENT = {
   }
 };
 
+const LIBRARY_RESOURCES = [
+  {
+    title: 'ICA Cooperative Law Database',
+    link: 'https://www.ica.coop/en/co-operatives/co-operative-law-database',
+    detail: 'Global cooperative law references curated by the ICA.'
+  },
+  {
+    title: 'UN Guidelines on Cooperatives',
+    link: 'https://www.un.org/development/desa/cooperatives/',
+    detail: 'UN resources on cooperative development and policy.'
+  },
+  {
+    title: 'US Federation of Worker Co-ops Library',
+    link: 'https://www.usworker.coop/resources/',
+    detail: 'Templates, governance guides, and legal primers.'
+  },
+  {
+    title: 'Platform Co-op Playbook',
+    link: 'https://platform.coop/now/playbook',
+    detail: 'Building platform cooperatives with shared ownership models.'
+  },
+  {
+    title: 'Community Land Trust Legal Resources',
+    link: 'https://groundedsolutions.org/resources',
+    detail: 'CLT legal frameworks and model documents.'
+  }
+];
+
+const NEWS_ITEMS = [
+  {
+    title: 'Via Campesina: Food sovereignty and cooperative land stewardship',
+    date: '2026-02-27',
+    link: 'https://viacampesina.org/en/'
+  },
+  {
+    title: 'MST: Worker-owned agrarian reform cooperatives in Brazil',
+    date: '2026-02-27',
+    link: 'https://mst.org.br/english/'
+  },
+  {
+    title: 'Global co-op policy round-up',
+    date: '2026-02-15',
+    link: 'https://www.thenews.coop/'
+  },
+  {
+    title: 'Platform co-ops and AI data trusts',
+    date: '2026-02-10',
+    link: 'https://platform.coop'
+  }
+];
+
 const el = (id) => document.getElementById(id);
 const toast = el('toast');
 const conn = el('connectionChip');
@@ -320,6 +371,44 @@ function renderGuide() {
   renderGuideCard('guideResources', GUIDE_CONTENT.resources.title, GUIDE_CONTENT.resources.items);
   renderGuideCard('guideBooks', GUIDE_CONTENT.books.title, GUIDE_CONTENT.books.items);
   renderGuideCard('guideHistory', GUIDE_CONTENT.history.title, GUIDE_CONTENT.history.items);
+}
+
+function renderLibrary(filter = '') {
+  const root = el('libraryList');
+  if (!root) return;
+  const term = filter.trim().toLowerCase();
+  const items = LIBRARY_RESOURCES.filter((item) => {
+    if (!term) return true;
+    return (
+      item.title.toLowerCase().includes(term) ||
+      (item.detail && item.detail.toLowerCase().includes(term))
+    );
+  });
+  if (!items.length) {
+    root.innerHTML = '<p class=\"muted\">No matching resources yet. Try another search.</p>';
+    return;
+  }
+  root.innerHTML = items
+    .map(
+      (item) => `<article class="card">
+        <h3>${escapeText(item.title)}</h3>
+        <p class="muted">${escapeText(item.detail || '')}</p>
+        <a class="cta text" href="${escapeText(item.link)}" target="_blank" rel="noreferrer">Open resource</a>
+      </article>`
+    )
+    .join('');
+}
+
+function renderNews() {
+  const root = el('newsList');
+  if (!root) return;
+  root.innerHTML = NEWS_ITEMS.map(
+    (item) => `<article class="card">
+      <p class="eyebrow">${escapeText(item.date || '')}</p>
+      <h3>${escapeText(item.title)}</h3>
+      <a class="cta text" href="${escapeText(item.link)}" target="_blank" rel="noreferrer">Read</a>
+    </article>`
+  ).join('');
 }
 
 function setEnvironmentBanner() {
@@ -992,6 +1081,8 @@ async function deleteCurrentUserContent() {
 async function setupEventHandlers() {
   renderGuide();
   setEnvironmentBanner();
+  renderLibrary('');
+  renderNews();
 
   document.querySelectorAll('.nav-links a').forEach((link) => {
     link.addEventListener('click', (e) => {
@@ -1258,6 +1349,11 @@ async function setupEventHandlers() {
   const clinicForm = el('clinicForm');
   if (clinicForm) {
     clinicForm.addEventListener('submit', submitClinic);
+  }
+
+  const librarySearch = el('librarySearch');
+  if (librarySearch) {
+    librarySearch.addEventListener('input', (e) => renderLibrary(e.target.value || ''));
   }
 }
 
