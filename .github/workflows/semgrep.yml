@@ -1,0 +1,25 @@
+name: Semgrep SAST
+on:
+  push:
+    branches: [main, MAROON-staging]
+  pull_request:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: returntocorp/semgrep-action@v1
+        with:
+          config: >
+            p/owasp-top-ten
+            p/javascript
+          publishToken: ${{ secrets.SEMGREP_APP_TOKEN || '' }}
+        env:
+          SEMGREP_RULES: ''
