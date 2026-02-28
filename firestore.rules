@@ -242,14 +242,19 @@ service cloud.firestore {
     match /newsletterSubscribers/{subscriberId} {
       allow create: if isValidNewsletter(request.resource.data);
       allow update: if isValidNewsletter(request.resource.data)
-        && resource.data.emailLower == request.resource.data.emailLower;
+        && resource.data.emailLower == request.resource.data.emailLower
+        && request.resource.data.createdAt == resource.data.createdAt;
       allow read: if isLawyerOrAdmin();
       allow delete: if false;
     }
 
     match /clinicSignups/{signupId} {
       allow create: if isValidClinic(request.resource.data);
-      allow read, update: if isLawyerOrAdmin();
+      allow update: if isLawyerOrAdmin()
+        && isValidClinic(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.emailLower == resource.data.emailLower;
+      allow read: if isLawyerOrAdmin();
       allow delete: if false;
     }
   }

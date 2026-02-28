@@ -142,6 +142,11 @@ const toast = el('toast');
 const conn = el('connectionChip');
 const userBadge = el('userBadge');
 
+if (toast) {
+  toast.setAttribute('role', 'status');
+  toast.setAttribute('aria-live', 'polite');
+}
+
 function showToast(message, timeoutMs = 2800) {
   if (!toast) return;
   toast.textContent = message;
@@ -277,6 +282,14 @@ function escapeText(v) {
   });
 }
 
+function setFormLoading(formId, loading) {
+  const form = el(formId);
+  if (!form) return;
+  form.querySelectorAll('button, input, textarea, select').forEach((node) => {
+    node.disabled = loading;
+  });
+}
+
 function renderGuideCard(targetId, title, items = []) {
   const root = el(targetId);
   if (!root) return;
@@ -347,6 +360,7 @@ async function submitNewsletter(event) {
   if (!filteredTopics.length) return showToast('Select valid topics.');
 
   state.loading = true;
+  setFormLoading('newsletterForm', true);
   try {
     const payload = {
       email,
@@ -367,6 +381,7 @@ async function submitNewsletter(event) {
     showToast('Could not save newsletter signup right now.');
   } finally {
     state.loading = false;
+    setFormLoading('newsletterForm', false);
   }
 }
 
@@ -392,6 +407,7 @@ async function submitClinic(event) {
   if (!consent) return showToast('Consent is required to contact you.');
 
   state.loading = true;
+  setFormLoading('clinicForm', true);
   try {
     await addDoc(collection(db, 'clinicSignups'), {
       name,
@@ -416,6 +432,7 @@ async function submitClinic(event) {
     showToast('Could not submit clinic request right now.');
   } finally {
     state.loading = false;
+    setFormLoading('clinicForm', false);
   }
 }
 async function loadConsultations() {
@@ -944,6 +961,14 @@ async function deleteCurrentUserContent() {
 
 async function setupEventHandlers() {
   renderGuide();
+
+  document.querySelectorAll('.nav-links a').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const target = document.querySelector(link.getAttribute('href'));
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
 
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
