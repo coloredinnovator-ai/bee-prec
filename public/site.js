@@ -417,8 +417,18 @@ function setEnvironmentBanner() {
   if (host.includes('staging')) {
     envBanner.textContent = 'STAGING — For testing only';
     envBanner.classList.add('show');
+    document.body.classList.add('staging');
+    const hero = document.getElementById('landing');
+    if (hero) hero.classList.add('staging-woodcut');
+    const vid = document.getElementById('stagingVideo');
+    if (vid) {
+      // Force autoplay muted on load for staging only
+      const base = 'https://www.youtube.com/embed/QWveXdj6oZU';
+      vid.src = `${base}?autoplay=1&mute=1&playsinline=1&rel=0`;
+    }
   } else {
     envBanner.classList.remove('show');
+    document.body.classList.remove('staging');
   }
 }
 
