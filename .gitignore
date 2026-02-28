@@ -1,1 +1,4 @@
 .firebase/
+.tmp-playwright/
+playwright-report/
+node_modules/
