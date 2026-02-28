@@ -75,6 +75,8 @@ const ALLOWED_NEWSLETTER_TOPICS = new Set(['co-op-news', 'guides', 'coop-project
 const ALLOWED_CLINIC_STAGE = new Set(['idea', 'planning', 'pilot', 'ready-to-launch']);
 const ALLOWED_CLINIC_HELP = new Set(['legal-coop-setup', 'governance', 'funding', 'member-structure', 'other']);
 
+const RATE_LIMIT_WINDOW_MS = 60_000;
+
 const GUIDE_CONTENT = {
   identity: {
     title: 'Cooperative identity',
@@ -141,6 +143,7 @@ const el = (id) => document.getElementById(id);
 const toast = el('toast');
 const conn = el('connectionChip');
 const userBadge = el('userBadge');
+const envBanner = el('envBanner');
 
 if (toast) {
   toast.setAttribute('role', 'status');
@@ -290,6 +293,18 @@ function setFormLoading(formId, loading) {
   });
 }
 
+async function isRateLimited(bucket) {
+  const now = Date.now();
+  const key = `beecoop-rate-${bucket}`;
+  const prev = Number(localStorage.getItem(key) || 0);
+  if (now - prev < RATE_LIMIT_WINDOW_MS) {
+    showToast('Please wait a moment before submitting again.');
+    return true;
+  }
+  localStorage.setItem(key, String(now));
+  return false;
+}
+
 function renderGuideCard(targetId, title, items = []) {
   const root = el(targetId);
   if (!root) return;
@@ -305,6 +320,17 @@ function renderGuide() {
   renderGuideCard('guideResources', GUIDE_CONTENT.resources.title, GUIDE_CONTENT.resources.items);
   renderGuideCard('guideBooks', GUIDE_CONTENT.books.title, GUIDE_CONTENT.books.items);
   renderGuideCard('guideHistory', GUIDE_CONTENT.history.title, GUIDE_CONTENT.history.items);
+}
+
+function setEnvironmentBanner() {
+  if (!envBanner) return;
+  const host = window.location.host || '';
+  if (host.includes('staging')) {
+    envBanner.textContent = 'STAGING — For testing only';
+    envBanner.classList.add('show');
+  } else {
+    envBanner.classList.remove('show');
+  }
 }
 
 async function ensureProfile(user) {
@@ -359,6 +385,8 @@ async function submitNewsletter(event) {
   const filteredTopics = topics.filter((t) => ALLOWED_NEWSLETTER_TOPICS.has(t));
   if (!filteredTopics.length) return showToast('Select valid topics.');
 
+  if (await isRateLimited('newsletter')) return;
+
   state.loading = true;
   setFormLoading('newsletterForm', true);
   try {
@@ -405,6 +433,8 @@ async function submitClinic(event) {
   if (!ALLOWED_CLINIC_STAGE.has(stage)) return showToast('Select a valid stage.');
   if (!ALLOWED_CLINIC_HELP.has(helpType)) return showToast('Select a valid help type.');
   if (!consent) return showToast('Consent is required to contact you.');
+
+  if (await isRateLimited('clinic')) return;
 
   state.loading = true;
   setFormLoading('clinicForm', true);
@@ -961,6 +991,7 @@ async function deleteCurrentUserContent() {
 
 async function setupEventHandlers() {
   renderGuide();
+  setEnvironmentBanner();
 
   document.querySelectorAll('.nav-links a').forEach((link) => {
     link.addEventListener('click', (e) => {
