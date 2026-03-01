@@ -255,6 +255,143 @@ a:hover {
   box-shadow: var(--shadow);
 }
 
+.agent-section {
+  position: relative;
+}
+
+.agent-crest {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.5rem;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background-image: url('/assets/motif-aleut.svg');
+  background-size: cover;
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.agent-console {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.1fr) minmax(320px, 2fr) minmax(220px, 1fr);
+  gap: 1rem;
+}
+
+.agent-roster,
+.agent-chat,
+.agent-tools {
+  background: rgba(17, 31, 26, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.agent-roster {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.agent-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.6rem;
+  align-items: start;
+  padding: 0.6rem 0.7rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.agent-item strong { display: block; margin-bottom: 0.2rem; }
+
+.agent-status {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 0.35rem;
+  box-shadow: 0 0 10px rgba(240, 180, 41, 0.45);
+}
+
+.agent-status.live { background: var(--yellow); }
+.agent-status.warm { background: var(--red); }
+.agent-status.cool { background: var(--green); }
+
+.agent-chip {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: rgba(240, 180, 41, 0.16);
+  color: var(--yellow);
+  border: 1px solid rgba(240, 180, 41, 0.3);
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  align-self: start;
+}
+
+.agent-chat__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 0.8rem;
+}
+
+.agent-chat__log {
+  display: grid;
+  gap: 0.6rem;
+  background: #0b0f11;
+  border-radius: 12px;
+  padding: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  min-height: 240px;
+}
+
+.chat-row {
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.chat-row.system {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.chat-row.user {
+  background: rgba(240, 180, 41, 0.16);
+  border: 1px solid rgba(240, 180, 41, 0.35);
+}
+
+.chat-row.agent {
+  background: rgba(45, 106, 79, 0.18);
+  border: 1px solid rgba(45, 106, 79, 0.4);
+}
+
+.agent-chat__input {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.agent-chat__input input {
+  flex: 1;
+}
+
+.agent-tools {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tool-item {
+  padding: 0.6rem 0.7rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tool-item h4 { margin: 0 0 0.2rem; }
+
 .section-block {
   padding: 1.5rem;
 }
@@ -494,10 +631,10 @@ button.danger {
   border-radius: var(--radius);
   pointer-events: none;
   opacity: 0.4;
-  background-image: url('/assets/motif-aleut.svg');
-  background-size: cover;
-  background-repeat: no-repeat;
-  background-position: center;
+  background-image: url('/assets/motif-frame.svg'), url('/assets/motif-aleut.svg');
+  background-size: cover, 220px 220px;
+  background-repeat: no-repeat, repeat;
+  background-position: center, center;
   display: none;
 }
 
@@ -546,4 +683,6 @@ button.danger {
   .hero__meta { justify-content: center; }
   .shell { grid-template-columns: 1fr; }
   .left-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .agent-console { grid-template-columns: 1fr; }
+  .agent-crest { position: static; margin: 0 auto 1rem; }
 }

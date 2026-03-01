@@ -46,7 +46,9 @@ const state = {
   lawyerMode: false,
   loading: false,
   lastNewsletterSubmit: 0,
-  lastClinicSubmit: 0
+  lastClinicSubmit: 0,
+  profileDoc: null,
+  identityDoc: null
 };
 
 const LAWYER_CODES = new Set(['BEEPREC-LAWYER', 'BEEPREC-LAWYER-2026']);
@@ -55,6 +57,11 @@ const MAX_TEXT_LENGTH = 5000;
 const MAX_SHORT_TEXT = 120;
 const MAX_NAME_LENGTH = 80;
 const MAX_REASON_LENGTH = 1200;
+const MAX_PROFILE_BIO = 400;
+const MAX_HANDLE_LENGTH = 40;
+const MAX_LOCATION_LENGTH = 80;
+const MAX_ORG_LENGTH = 120;
+const MAX_URL_LENGTH = 160;
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const ALLOWED_CONSULTATION_AREAS = new Set(['contracts', 'workplace', 'smallBusiness', 'cyber', 'other']);
 const ALLOWED_CONSULTATION_URGENCY = new Set(['low', 'normal', 'high', 'critical']);
@@ -74,6 +81,12 @@ const ALLOWED_ATTACHMENT_MIME = new Set([
 const ALLOWED_NEWSLETTER_TOPICS = new Set(['co-op-news', 'guides', 'coop-project-updates']);
 const ALLOWED_CLINIC_STAGE = new Set(['idea', 'planning', 'pilot', 'ready-to-launch']);
 const ALLOWED_CLINIC_HELP = new Set(['legal-coop-setup', 'governance', 'funding', 'member-structure', 'other']);
+const ALLOWED_PROFILE_VISIBILITY = new Set(['members', 'public']);
+const ALLOWED_ID_TYPES = new Set(['drivers-license', 'passport', 'state-id', 'other']);
+const ALLOWED_PROFILE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const ALLOWED_ID_MIME = new Set(['image/jpeg', 'image/png', 'application/pdf']);
+const MAX_PROFILE_BYTES = 2 * 1024 * 1024;
+const MAX_ID_BYTES = 5 * 1024 * 1024;
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 
@@ -261,6 +274,13 @@ function validateUpload(file) {
   return { ok: true };
 }
 
+function validateFile(file, allowedTypes, maxBytes, label) {
+  if (!file) return { ok: false, reason: `No ${label} file provided.` };
+  if (!allowedTypes.has(file.type)) return { ok: false, reason: `Unsupported ${label} file type.` };
+  if (file.size > maxBytes) return { ok: false, reason: `${label} file too large.` };
+  return { ok: true };
+}
+
 function setIdentity(profile, user) {
   if (!user) {
     state.user = null;
@@ -297,6 +317,44 @@ async function tryUploadAttachment(file, reportId, reportedBy) {
     return { attachmentUrl, attachmentPath: fileRef.fullPath, hasAttachment: true, fileName: file.name };
   } catch (error) {
     console.error('Attachment upload failed:', error);
+    return null;
+  }
+}
+
+async function uploadProfilePhoto(file) {
+  if (!file || !state.user) return null;
+  const validation = validateFile(file, ALLOWED_PROFILE_MIME, MAX_PROFILE_BYTES, 'profile');
+  if (!validation.ok) {
+    showToast(validation.reason);
+    return null;
+  }
+  try {
+    const fileRef = ref(storage, `profiles/${state.user.uid}/${normalizeFilename(file.name)}`);
+    await uploadBytes(fileRef, file, { contentType: file.type });
+    const avatarUrl = await getDownloadURL(fileRef);
+    return { avatarUrl, avatarPath: fileRef.fullPath };
+  } catch (error) {
+    console.error('Profile upload failed:', error);
+    showToast('Profile photo upload failed.');
+    return null;
+  }
+}
+
+async function uploadIdentityDoc(file) {
+  if (!file || !state.user) return null;
+  const validation = validateFile(file, ALLOWED_ID_MIME, MAX_ID_BYTES, 'identity');
+  if (!validation.ok) {
+    showToast(validation.reason);
+    return null;
+  }
+  try {
+    const fileRef = ref(storage, `identity/${state.user.uid}/${normalizeFilename(file.name)}`);
+    await uploadBytes(fileRef, file, { contentType: file.type });
+    const documentUrl = await getDownloadURL(fileRef);
+    return { documentUrl, documentPath: fileRef.fullPath, documentName: file.name };
+  } catch (error) {
+    console.error('Identity upload failed:', error);
+    showToast('Identity document upload failed.');
     return null;
   }
 }
@@ -409,6 +467,16 @@ function renderNews() {
       <a class="cta text" href="${escapeText(item.link)}" target="_blank" rel="noreferrer">Read</a>
     </article>`
   ).join('');
+}
+
+function setProfileStatus(message) {
+  const node = el('profileStatus');
+  if (node) node.textContent = message;
+}
+
+function setIdentityStatus(message) {
+  const node = el('identityStatus');
+  if (node) node.textContent = message;
 }
 
 function setEnvironmentBanner() {
@@ -562,6 +630,116 @@ async function submitClinic(event) {
   } finally {
     state.loading = false;
     setFormLoading('clinicForm', false);
+  }
+}
+
+async function submitProfile(event) {
+  event.preventDefault();
+  if (state.loading) return;
+  if (!state.user) return showToast('Sign in required');
+
+  const displayName = sanitizeText(el('profileName')?.value || state.profile?.displayName || '', MAX_NAME_LENGTH);
+  const handle = sanitizeText(el('profileHandle')?.value || '', MAX_HANDLE_LENGTH).replace(/\s+/g, '');
+  const organization = sanitizeText(el('profileOrg')?.value || '', MAX_ORG_LENGTH);
+  const location = sanitizeText(el('profileLocation')?.value || '', MAX_LOCATION_LENGTH);
+  const websiteRaw = sanitizeText(el('profileWebsite')?.value || '', MAX_URL_LENGTH);
+  const website = websiteRaw && !/^https?:\/\//i.test(websiteRaw) ? `https://${websiteRaw}` : websiteRaw;
+  const bio = sanitizeText(el('profileBio')?.value || '', MAX_PROFILE_BIO);
+  const visibility = sanitizeText(el('profileVisibility')?.value || 'members', 20);
+  const offlineAccessRequested = !!el('profileOffline')?.checked;
+  const matchingOptIn = !!el('profileMatching')?.checked;
+  const photoFile = el('profilePhoto')?.files?.[0];
+
+  if (!displayName) return showToast('Display name is required.');
+  if (!ALLOWED_PROFILE_VISIBILITY.has(visibility)) return showToast('Select a valid visibility.');
+
+  if (await isRateLimited('profile')) return;
+
+  state.loading = true;
+  setFormLoading('profileForm', true);
+  try {
+    let avatar = {};
+    if (photoFile) {
+      const uploaded = await uploadProfilePhoto(photoFile);
+      if (!uploaded) return;
+      avatar = uploaded;
+    }
+    const createdAt = state.profileDoc?.createdAt || serverTimestamp();
+    const payload = {
+      uid: state.user.uid,
+      displayName,
+      handle,
+      organization,
+      location,
+      website,
+      bio,
+      visibility,
+      offlineAccessRequested,
+      matchingOptIn,
+      avatarUrl: avatar.avatarUrl || state.profileDoc?.avatarUrl || '',
+      avatarPath: avatar.avatarPath || state.profileDoc?.avatarPath || '',
+      createdAt,
+      updatedAt: serverTimestamp()
+    };
+    await setDoc(doc(db, 'profiles', state.user.uid), payload, { merge: true });
+    state.profileDoc = { ...(state.profileDoc || {}), ...payload };
+    setProfileStatus('Profile saved.');
+    showToast('Profile saved.');
+  } catch (e) {
+    console.error('Profile save failed', e);
+    showToast('Could not save profile right now.');
+  } finally {
+    state.loading = false;
+    setFormLoading('profileForm', false);
+  }
+}
+
+async function submitIdentity(event) {
+  event.preventDefault();
+  if (state.loading) return;
+  if (!state.user) return showToast('Sign in required');
+
+  const legalName = sanitizeText(el('identityName')?.value || '', 120);
+  const idType = sanitizeText(el('identityType')?.value || '', 30);
+  const file = el('identityFile')?.files?.[0];
+  const consent = !!el('identityConsent')?.checked;
+
+  if (!legalName) return showToast('Legal name is required.');
+  if (!ALLOWED_ID_TYPES.has(idType)) return showToast('Select a valid ID type.');
+  if (!file) return showToast('Please upload an ID document.');
+  if (!consent) return showToast('Consent is required.');
+
+  if (await isRateLimited('identity')) return;
+
+  state.loading = true;
+  setFormLoading('identityForm', true);
+  try {
+    const upload = await uploadIdentityDoc(file);
+    if (!upload) return;
+    const submittedAt = state.identityDoc?.submittedAt || serverTimestamp();
+    const payload = {
+      uid: state.user.uid,
+      legalName,
+      idType,
+      documentUrl: upload.documentUrl,
+      documentPath: upload.documentPath,
+      documentName: upload.documentName,
+      status: 'pending',
+      consent: true,
+      submittedAt,
+      updatedAt: serverTimestamp()
+    };
+    await setDoc(doc(db, 'identityVerifications', state.user.uid), payload, { merge: true });
+    state.identityDoc = { ...(state.identityDoc || {}), ...payload };
+    setIdentityStatus('Status: pending review.');
+    showToast('Identity submission received.');
+    if (el('identityForm')) el('identityForm').reset?.();
+  } catch (e) {
+    console.error('Identity submission failed', e);
+    showToast('Could not submit identity verification.');
+  } finally {
+    state.loading = false;
+    setFormLoading('identityForm', false);
   }
 }
 async function loadConsultations() {
@@ -1055,6 +1233,96 @@ async function loadModerationClinic() {
   }
 }
 
+async function loadModerationIdentity() {
+  clearList(el('moderationIdentity'));
+  if (!state.lawyerMode) return;
+  const snap = await getDocs(query(collection(db, 'identityVerifications'), orderBy('submittedAt', 'desc')));
+  const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
+  if (!items.length) {
+    el('moderationIdentity').innerHTML = '<p class="muted">No identity submissions.</p>';
+    return;
+  }
+  for (const item of items) {
+    const submitted = toDate(item.submittedAt)?.toLocaleString() || 'N/A';
+    const row = renderItem({
+      title: `${escapeText(item.legalName || 'Identity submission')}`,
+      body: `${escapeText(item.idType || 'id')} · ${escapeText(item.uid || '')}`,
+      meta: `${escapeText(item.status || 'pending')} · ${submitted}`,
+      actions: [
+        {
+          label: 'Verify',
+          onClick: async () => {
+            await updateDoc(doc(db, 'identityVerifications', item.id), {
+              status: 'verified',
+              reviewedBy: state.user.uid,
+              reviewedAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+            await loadModerationIdentity();
+            await loadIdentityStatus();
+          }
+        },
+        {
+          label: 'Reject',
+          className: 'danger',
+          onClick: async () => {
+            await updateDoc(doc(db, 'identityVerifications', item.id), {
+              status: 'rejected',
+              reviewedBy: state.user.uid,
+              reviewedAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+            await loadModerationIdentity();
+            await loadIdentityStatus();
+          }
+        }
+      ]
+    });
+    el('moderationIdentity').appendChild(row);
+  }
+}
+
+async function loadProfile() {
+  if (!state.user) return;
+  const profileRef = doc(db, 'profiles', state.user.uid);
+  const snap = await getDoc(profileRef);
+  if (!snap.exists()) {
+    state.profileDoc = null;
+    setProfileStatus('Profile not saved yet.');
+    return;
+  }
+  const data = snap.data();
+  state.profileDoc = data;
+  if (el('profileName')) el('profileName').value = data.displayName || state.profile?.displayName || '';
+  if (el('profileHandle')) el('profileHandle').value = data.handle || '';
+  if (el('profileOrg')) el('profileOrg').value = data.organization || '';
+  if (el('profileLocation')) el('profileLocation').value = data.location || '';
+  if (el('profileWebsite')) el('profileWebsite').value = data.website || '';
+  if (el('profileBio')) el('profileBio').value = data.bio || '';
+  if (el('profileVisibility')) el('profileVisibility').value = data.visibility || 'members';
+  if (el('profileOffline')) el('profileOffline').checked = !!data.offlineAccessRequested;
+  if (el('profileMatching')) el('profileMatching').checked = !!data.matchingOptIn;
+  const updated = toDate(data.updatedAt)?.toLocaleString() || 'saved';
+  setProfileStatus(`Profile saved · ${updated}`);
+}
+
+async function loadIdentityStatus() {
+  if (!state.user) return;
+  const identityRef = doc(db, 'identityVerifications', state.user.uid);
+  const snap = await getDoc(identityRef);
+  if (!snap.exists()) {
+    state.identityDoc = null;
+    setIdentityStatus('Status: not submitted.');
+    return;
+  }
+  const data = snap.data();
+  state.identityDoc = data;
+  if (el('identityName')) el('identityName').value = data.legalName || '';
+  if (el('identityType')) el('identityType').value = data.idType || 'drivers-license';
+  const updated = toDate(data.updatedAt)?.toLocaleString() || 'pending';
+  setIdentityStatus(`Status: ${escapeText(data.status || 'pending')} · ${updated}`);
+}
+
 async function loadDashboardData() {
   if (!state.user) return;
   await Promise.all([loadConsultations(), loadReports(), loadPosts()]);
@@ -1066,7 +1334,8 @@ async function loadDashboardData() {
       loadModerationLawyers(),
       loadModerationDeletionRequests(),
       loadModerationNewsletter(),
-      loadModerationClinic()
+      loadModerationClinic(),
+      loadModerationIdentity()
     ]);
   }
 }
@@ -1111,6 +1380,9 @@ async function setupEventHandlers() {
         loadModerationPosts();
         loadModerationLawyers();
         loadModerationDeletionRequests();
+        loadModerationIdentity();
+        loadModerationNewsletter();
+        loadModerationClinic();
       }
     });
   });
@@ -1361,6 +1633,16 @@ async function setupEventHandlers() {
     clinicForm.addEventListener('submit', submitClinic);
   }
 
+  const profileForm = el('profileForm');
+  if (profileForm) {
+    profileForm.addEventListener('submit', submitProfile);
+  }
+
+  const identityForm = el('identityForm');
+  if (identityForm) {
+    identityForm.addEventListener('submit', submitIdentity);
+  }
+
   const librarySearch = el('librarySearch');
   if (librarySearch) {
     librarySearch.addEventListener('input', (e) => renderLibrary(e.target.value || ''));
@@ -1373,6 +1655,10 @@ onAuthStateChanged(auth, async (user) => {
     clearList(el('consultList'));
     clearList(el('reportList'));
     clearList(el('postFeed'));
+    state.profileDoc = null;
+    state.identityDoc = null;
+    setProfileStatus('Profile not saved yet.');
+    setIdentityStatus('Status: not submitted.');
     showSection('dashboard');
     return;
   }
@@ -1384,12 +1670,15 @@ onAuthStateChanged(auth, async (user) => {
   }
   setIdentity(profile, user);
   await loadDashboardData();
+  await loadProfile();
+  await loadIdentityStatus();
   if (state.lawyerMode) {
     await loadModerationConsults();
     await loadModerationReports();
     await loadModerationPosts();
     await loadModerationLawyers();
     await loadModerationDeletionRequests();
+    await loadModerationIdentity();
   }
 });
 

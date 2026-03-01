@@ -19,6 +19,11 @@ service firebase.storage {
         && (userRole(request.auth.uid) == 'lawyer' || userRole(request.auth.uid) == 'admin');
     }
 
+    function profileIsPublic(uid) {
+      return exists(/databases/(default)/documents/profiles/$(uid))
+        && get(/databases/(default)/documents/profiles/$(uid)).data.visibility == 'public';
+    }
+
     function validAttachmentUpload() {
       return request.resource.size > 0
         && request.resource.size <= 5 * 1024 * 1024
@@ -34,9 +39,41 @@ service firebase.storage {
         ];
     }
 
+    function validProfileUpload() {
+      return request.resource.size > 0
+        && request.resource.size <= 2 * 1024 * 1024
+        && request.resource.contentType in [
+          'image/jpeg',
+          'image/png',
+          'image/webp'
+        ];
+    }
+
+    function validIdentityUpload() {
+      return request.resource.size > 0
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType in [
+          'image/jpeg',
+          'image/png',
+          'application/pdf'
+        ];
+    }
+
     match /incidents/{uid}/{reportId}/{allPaths=**} {
       allow read: if signedIn() && (isOwner(uid) || isStaff());
       allow write: if signedIn() && isOwner(uid) && validAttachmentUpload();
+      allow delete: if signedIn() && (isOwner(uid) || isStaff());
+    }
+
+    match /profiles/{uid}/{allPaths=**} {
+      allow read: if signedIn() || profileIsPublic(uid);
+      allow write: if signedIn() && isOwner(uid) && validProfileUpload();
+      allow delete: if signedIn() && (isOwner(uid) || isStaff());
+    }
+
+    match /identity/{uid}/{allPaths=**} {
+      allow read: if signedIn() && (isOwner(uid) || isStaff());
+      allow write: if signedIn() && isOwner(uid) && validIdentityUpload();
       allow delete: if signedIn() && (isOwner(uid) || isStaff());
     }
 

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400" fill="none" stroke="#e0cdaa" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+  <!-- woven arcs -->
+  <path d="M30 70 Q200 10 370 70" />
+  <path d="M30 330 Q200 390 370 330" />
+  <path d="M60 70 L40 200 L60 330" />
+  <path d="M340 70 L360 200 L340 330" />
+  <!-- basket weave center -->
+  <circle cx="200" cy="200" r="46" fill="none" />
+  <path d="M160 200 q40 -60 80 0" />
+  <path d="M160 200 q40 60 80 0" />
+  <path d="M154 176 q46 -30 92 0" />
+  <path d="M154 224 q46 30 92 0" />
+  <!-- kayak/baidarka motifs -->
+  <path d="M90 120 q30 -18 60 0 q-30 18 -60 0 z" fill="none" />
+  <path d="M250 120 q30 -18 60 0 q-30 18 -60 0 z" fill="none" />
+  <path d="M90 280 q30 18 60 0 q-30 -18 -60 0 z" fill="none" />
+  <path d="M250 280 q30 18 60 0 q-30 -18 -60 0 z" fill="none" />
+  <!-- wave corners -->
+  <path d="M30 100 q40 10 50 -20" />
+  <path d="M370 100 q-40 10 -50 -20" />
+  <path d="M30 300 q40 -10 50 20" />
+  <path d="M370 300 q-40 -10 -50 20" />
+</svg>

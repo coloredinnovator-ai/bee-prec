@@ -26,7 +26,6 @@ service cloud.firestore {
     function isSafeProfile(profile) {
       return isSafeText(profile.uid, 128)
         && profile.uid is string
-        && isSelf(profile.uid)
         && profile.displayName is string
         && profile.displayName.size() <= 80
         && profile.email is string
@@ -34,6 +33,45 @@ service cloud.firestore {
         && profile.createdAt is timestamp
         && profile.updatedAt is timestamp
         && profile.deleted is bool;
+    }
+
+    function isValidProfilePayload(profile) {
+      return profile.uid is string
+        && profile.uid.size() <= 128
+        && profile.displayName is string
+        && profile.displayName.size() >= 1
+        && profile.displayName.size() <= 80
+        && (!('handle' in profile) || (profile.handle is string && profile.handle.size() <= 40))
+        && (!('organization' in profile) || (profile.organization is string && profile.organization.size() <= 120))
+        && (!('location' in profile) || (profile.location is string && profile.location.size() <= 80))
+        && (!('website' in profile) || (profile.website is string && profile.website.size() <= 160))
+        && (!('bio' in profile) || (profile.bio is string && profile.bio.size() <= 400))
+        && (!('avatarUrl' in profile) || profile.avatarUrl is string)
+        && (!('avatarPath' in profile) || profile.avatarPath is string)
+        && profile.visibility in ['members', 'public']
+        && profile.offlineAccessRequested is bool
+        && profile.matchingOptIn is bool
+        && profile.createdAt is timestamp
+        && profile.updatedAt is timestamp;
+    }
+
+    function isValidIdentityPayload(payload) {
+      return payload.uid is string
+        && payload.uid.size() <= 128
+        && payload.legalName is string
+        && payload.legalName.size() >= 1
+        && payload.legalName.size() <= 120
+        && payload.idType in ['drivers-license', 'passport', 'state-id', 'other']
+        && payload.documentUrl is string
+        && payload.documentPath is string
+        && (!('documentName' in payload) || (payload.documentName is string && payload.documentName.size() <= 160))
+        && payload.status in ['pending', 'verified', 'rejected']
+        && payload.consent is bool
+        && payload.consent == true
+        && payload.submittedAt is timestamp
+        && payload.updatedAt is timestamp
+        && (!('reviewedBy' in payload) || payload.reviewedBy is string)
+        && (!('reviewedAt' in payload) || payload.reviewedAt is timestamp);
     }
 
     function isValidConsultation(payload) {
@@ -154,6 +192,44 @@ service cloud.firestore {
           (isSelf(uid) && request.resource.data.role == resource.data.role && isSafeProfile(request.resource.data))
           || isLawyerOrAdmin()
         );
+      allow delete: if false;
+    }
+
+    match /profiles/{uid} {
+      allow create: if signedIn()
+        && isSelf(uid)
+        && request.resource.data.uid == request.auth.uid
+        && isValidProfilePayload(request.resource.data);
+      allow read: if signedIn() || resource.data.visibility == 'public';
+      allow update: if signedIn() && (
+        (isSelf(uid)
+          && request.resource.data.uid == request.auth.uid
+          && isValidProfilePayload(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt)
+        || (isLawyerOrAdmin() && isValidProfilePayload(request.resource.data))
+      );
+      allow delete: if false;
+    }
+
+    match /identityVerifications/{uid} {
+      allow create: if signedIn()
+        && isSelf(uid)
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && isValidIdentityPayload(request.resource.data);
+      allow read: if signedIn() && (isSelf(uid) || isLawyerOrAdmin());
+      allow update: if signedIn() && (
+        (isSelf(uid)
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && isValidIdentityPayload(request.resource.data)
+          && request.resource.data.submittedAt == resource.data.submittedAt
+          && !('reviewedBy' in request.resource.data)
+          && !('reviewedAt' in request.resource.data))
+        || (isLawyerOrAdmin()
+          && isValidIdentityPayload(request.resource.data)
+          && request.resource.data.submittedAt == resource.data.submittedAt)
+      );
       allow delete: if false;
     }
 

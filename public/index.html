@@ -30,6 +30,7 @@
         </div>
         <nav class="nav-links">
           <a href="#clinic">Clinic</a>
+          <a href="#agents">Agents</a>
           <a href="#library">Library</a>
           <a href="#news">News</a>
           <a href="#guide">Basics</a>
@@ -84,6 +85,104 @@
       <div class="grid-card">
         <h3>Learning</h3>
         <p>Reference guide to co-op identity, principles, books, and global case studies.</p>
+      </div>
+    </section>
+
+    <section class="section-block agent-section" id="agents">
+      <div class="section-header">
+        <div>
+          <p class="eyebrow">Agent Studio</p>
+          <h2>Specialized agents for co-op action</h2>
+          <p>A calm, guided workspace for research, intake, and community care. You stay in control of every action.</p>
+        </div>
+        <a class="cta text" href="#clinic">Start a clinic intake</a>
+      </div>
+      <div class="agent-crest" aria-hidden="true"></div>
+      <div class="agent-console">
+        <aside class="agent-roster card">
+          <h3>Specialized agents</h3>
+          <div class="agent-item">
+            <span class="agent-status live" aria-hidden="true"></span>
+            <div>
+              <strong>Clinic Intake Agent</strong>
+              <p class="muted">Turns your notes into a structured intake packet and next steps.</p>
+            </div>
+            <span class="agent-chip">Ready</span>
+          </div>
+          <div class="agent-item">
+            <span class="agent-status warm" aria-hidden="true"></span>
+            <div>
+              <strong>Co-op Law Researcher</strong>
+              <p class="muted">Finds statutes, bylaws, and governance models by region.</p>
+            </div>
+            <span class="agent-chip">In focus</span>
+          </div>
+          <div class="agent-item">
+            <span class="agent-status cool" aria-hidden="true"></span>
+            <div>
+              <strong>Community Care Agent</strong>
+              <p class="muted">Flags harm reports and suggests support-centered responses.</p>
+            </div>
+            <span class="agent-chip">On watch</span>
+          </div>
+          <div class="agent-item">
+            <span class="agent-status live" aria-hidden="true"></span>
+            <div>
+              <strong>News & Library Agent</strong>
+              <p class="muted">Curates weekly co-op news and research library additions.</p>
+            </div>
+            <span class="agent-chip">Queued</span>
+          </div>
+          <div class="agent-item">
+            <span class="agent-status warm" aria-hidden="true"></span>
+            <div>
+              <strong>Funding Pathways Agent</strong>
+              <p class="muted">Maps grants, cooperative finance, and member capital options.</p>
+            </div>
+            <span class="agent-chip">Drafting</span>
+          </div>
+        </aside>
+
+        <div class="agent-chat card">
+          <div class="agent-chat__header">
+            <div>
+              <p class="eyebrow">Bee Ops Console</p>
+              <h3>Agent workspace</h3>
+              <p class="muted">Safe mode on. Actions require your approval.</p>
+            </div>
+            <span class="agent-chip live">Live preview</span>
+          </div>
+          <div class="agent-chat__log">
+            <div class="chat-row system">System: Consent confirmed. Moderation safeguards enabled.</div>
+            <div class="chat-row user">We are a housing co-op exploring legal structure and member equity.</div>
+            <div class="chat-row agent">Drafting intake summary. Recommending: bylaws review, funding scan, and clinic consult.</div>
+            <div class="chat-row agent">Pulled resources: ICA cooperative identity, USFWC legal templates, CLT financing guides.</div>
+          </div>
+          <div class="agent-chat__input">
+            <input type="text" value="Describe your co-op need..." aria-label="Agent input" disabled />
+            <button type="button" disabled>Queue task</button>
+          </div>
+        </div>
+
+        <div class="agent-tools card">
+          <h3>Playbooks & tools</h3>
+          <div class="tool-item">
+            <h4>Clinic checklist</h4>
+            <p class="muted">Intake questions, document prep, and consent prompts.</p>
+          </div>
+          <div class="tool-item">
+            <h4>Law library linkouts</h4>
+            <p class="muted">Co-op statutes, governance templates, and case examples.</p>
+          </div>
+          <div class="tool-item">
+            <h4>Community response map</h4>
+            <p class="muted">Steps for care, reporting, and secure escalation.</p>
+          </div>
+          <div class="tool-item">
+            <h4>Risk notes</h4>
+            <p class="muted">Only member-approved actions get executed.</p>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -265,6 +364,7 @@
       <main class="shell">
         <aside class="left-nav">
           <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+          <button class="tab-btn" data-tab="profile">Profile</button>
           <button class="tab-btn" data-tab="consultations">Consultations</button>
           <button class="tab-btn" data-tab="reports">Incident Reports</button>
           <button class="tab-btn" data-tab="community">Community</button>
@@ -305,6 +405,78 @@
                   <button type="button" id="resetPasswordBtn" class="ghost">Reset password</button>
                 </div>
                 <button type="button" id="logoutBtn" class="ghost" disabled>Sign out</button>
+              </form>
+            </div>
+          </section>
+
+          <section class="panel" id="profile">
+            <h2>Profile & verification</h2>
+            <div class="grid two-col">
+              <form id="profileForm" class="card">
+                <h3>Public profile</h3>
+                <label>Display name
+                  <input id="profileName" type="text" maxlength="80" />
+                </label>
+                <label>Handle (optional)
+                  <input id="profileHandle" type="text" maxlength="40" placeholder="@member" />
+                </label>
+                <label>Organization (optional)
+                  <input id="profileOrg" type="text" maxlength="120" />
+                </label>
+                <label>Location (optional)
+                  <input id="profileLocation" type="text" maxlength="80" />
+                </label>
+                <label>Website (optional)
+                  <input id="profileWebsite" type="url" maxlength="160" placeholder="https://..." />
+                </label>
+                <label>Bio (optional)
+                  <textarea id="profileBio" rows="3" maxlength="400"></textarea>
+                </label>
+                <label>Profile photo (optional)
+                  <input id="profilePhoto" type="file" accept="image/*" />
+                </label>
+                <label>Visibility
+                  <select id="profileVisibility">
+                    <option value="members">Members only</option>
+                    <option value="public">Public</option>
+                  </select>
+                </label>
+                <label class="inline-check">
+                  <input id="profileOffline" type="checkbox" />
+                  <span>Request Maroon offline access</span>
+                </label>
+                <label class="inline-check">
+                  <input id="profileMatching" type="checkbox" />
+                  <span>Opt in to member matching</span>
+                </label>
+                <p class="muted">Matching is opt-in and manually reviewed before any introductions.</p>
+                <button type="submit">Save profile</button>
+                <p class="muted" id="profileStatus">Profile not saved yet.</p>
+              </form>
+
+              <form id="identityForm" class="card">
+                <h3>Identity verification</h3>
+                <p class="muted">Upload a government ID to unlock verified member features. Files are only visible to the verification team.</p>
+                <label>Legal name
+                  <input id="identityName" type="text" maxlength="120" />
+                </label>
+                <label>ID type
+                  <select id="identityType">
+                    <option value="drivers-license">Driver’s license</option>
+                    <option value="passport">Passport</option>
+                    <option value="state-id">State ID</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label>Upload ID document
+                  <input id="identityFile" type="file" accept="image/*,.pdf" />
+                </label>
+                <label class="inline-check">
+                  <input id="identityConsent" type="checkbox" />
+                  <span>I consent to identity verification review.</span>
+                </label>
+                <button type="submit">Submit verification</button>
+                <p class="muted" id="identityStatus">Status: not submitted.</p>
               </form>
             </div>
           </section>
@@ -437,6 +609,10 @@
               <div class="card">
                 <h3>Account deletion requests</h3>
                 <div id="moderationDeletionRequests" class="list"></div>
+              </div>
+              <div class="card">
+                <h3>Identity verification queue</h3>
+                <div id="moderationIdentity" class="list"></div>
               </div>
               <div class="card">
                 <h3>Newsletter queue</h3>
