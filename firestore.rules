@@ -142,7 +142,7 @@ service cloud.firestore {
         && payload.topics is list
         && payload.topics.size() >= 1
         && payload.topics.size() <= 5
-        && payload.topics.all(t, t in ['co-op-news', 'guides', 'coop-project-updates'])
+        && payload.topics.hasOnly(['co-op-news', 'guides', 'coop-project-updates'])
         && payload.consent is bool
         && payload.consent == true
         && payload.source is string

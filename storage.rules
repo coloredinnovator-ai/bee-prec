@@ -10,18 +10,18 @@ service firebase.storage {
     }
 
     function userRole(uid) {
-      return get(/databases/(default)/documents/users/$(uid)).data.role;
+      return firestore.get(/databases/(default)/documents/users/$(uid)).data.role;
     }
 
-    function isStaff(uid) {
+    function isStaff() {
       return signedIn()
-        && exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
         && (userRole(request.auth.uid) == 'lawyer' || userRole(request.auth.uid) == 'admin');
     }
 
     function profileIsPublic(uid) {
-      return exists(/databases/(default)/documents/profiles/$(uid))
-        && get(/databases/(default)/documents/profiles/$(uid)).data.visibility == 'public';
+      return firestore.exists(/databases/(default)/documents/profiles/$(uid))
+        && firestore.get(/databases/(default)/documents/profiles/$(uid)).data.visibility == 'public';
     }
 
     function validAttachmentUpload() {
