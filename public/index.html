@@ -365,6 +365,8 @@
         <aside class="left-nav">
           <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
           <button class="tab-btn" data-tab="profile">Profile</button>
+          <button class="tab-btn" data-tab="directory">Directory</button>
+          <button class="tab-btn" data-tab="connections">Connections</button>
           <button class="tab-btn" data-tab="consultations">Consultations</button>
           <button class="tab-btn" data-tab="reports">Incident Reports</button>
           <button class="tab-btn" data-tab="community">Community</button>
@@ -432,6 +434,9 @@
                 <label>Bio (optional)
                   <textarea id="profileBio" rows="3" maxlength="400"></textarea>
                 </label>
+                <label>Focus areas (optional)
+                  <input id="profileFocus" type="text" maxlength="200" placeholder="Housing, governance, legal, funding" />
+                </label>
                 <label>Profile photo (optional)
                   <input id="profilePhoto" type="file" accept="image/*" />
                 </label>
@@ -478,6 +483,35 @@
                 <button type="submit">Submit verification</button>
                 <p class="muted" id="identityStatus">Status: not submitted.</p>
               </form>
+            </div>
+          </section>
+
+          <section class="panel" id="directory">
+            <h2>Member directory</h2>
+            <div class="section-header">
+              <div>
+                <p class="muted">Discover members who opted in to visibility or matching.</p>
+              </div>
+              <input id="directorySearch" class="search" type="search" placeholder="Search members..." aria-label="Search members" />
+            </div>
+            <div id="directoryList" class="list"></div>
+          </section>
+
+          <section class="panel" id="connections">
+            <h2>Connections</h2>
+            <form id="connectionRequestForm" class="card">
+              <h3>Request an introduction</h3>
+              <label>Member UID or handle
+                <input id="connectionTarget" type="text" required placeholder="UID or @handle" />
+              </label>
+              <label>Message (optional)
+                <textarea id="connectionMessage" rows="3" maxlength="400"></textarea>
+              </label>
+              <button type="submit">Send request</button>
+            </form>
+            <div class="card">
+              <h3>My requests</h3>
+              <div id="connectionList" class="list"></div>
             </div>
           </section>
 
@@ -613,6 +647,10 @@
               <div class="card">
                 <h3>Identity verification queue</h3>
                 <div id="moderationIdentity" class="list"></div>
+              </div>
+              <div class="card">
+                <h3>Connection requests</h3>
+                <div id="moderationMatches" class="list"></div>
               </div>
               <div class="card">
                 <h3>Newsletter queue</h3>

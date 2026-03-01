@@ -14,8 +14,11 @@ Fields:
 - `location` (string, optional)
 - `website` (string, optional)
 - `bio` (string, optional)
+- `focusAreas` (string[], optional)
 - `avatarUrl` (string, optional)
 - `avatarPath` (string, optional)
+- `verified` (bool, optional)
+- `verifiedAt` (timestamp, optional)
 - `visibility` (`members` | `public`)
 - `offlineAccessRequested` (bool)
 - `matchingOptIn` (bool)
@@ -43,6 +46,20 @@ Fields:
 - `reviewedAt` (timestamp, optional)
 
 Identity documents are stored in Storage at `identity/{uid}/...` and are readable only by the uploader and verified staff roles.
+
+## Match Requests
+
+Collection: `matchRequests/{id}`
+
+Fields:
+- `fromUid` (string)
+- `toUid` (string)
+- `fromName` (string)
+- `toName` (string)
+- `message` (string, optional)
+- `status` (`pending` | `accepted` | `declined`)
+- `createdAt` (timestamp)
+- `updatedAt` (timestamp)
 
 ## Access Control
 

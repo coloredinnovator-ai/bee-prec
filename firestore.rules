@@ -46,8 +46,11 @@ service cloud.firestore {
         && (!('location' in profile) || (profile.location is string && profile.location.size() <= 80))
         && (!('website' in profile) || (profile.website is string && profile.website.size() <= 160))
         && (!('bio' in profile) || (profile.bio is string && profile.bio.size() <= 400))
+        && (!('focusAreas' in profile) || (profile.focusAreas is list && profile.focusAreas.size() <= 8))
         && (!('avatarUrl' in profile) || profile.avatarUrl is string)
         && (!('avatarPath' in profile) || profile.avatarPath is string)
+        && (!('verified' in profile) || profile.verified is bool)
+        && (!('verifiedAt' in profile) || profile.verifiedAt is timestamp)
         && profile.visibility in ['members', 'public']
         && profile.offlineAccessRequested is bool
         && profile.matchingOptIn is bool
@@ -179,6 +182,19 @@ service cloud.firestore {
         && payload.updatedAt is timestamp;
     }
 
+    function isValidMatch(payload) {
+      return payload.fromUid is string
+        && payload.toUid is string
+        && payload.fromName is string
+        && payload.fromName.size() <= 80
+        && payload.toName is string
+        && payload.toName.size() <= 80
+        && (!('message' in payload) || (payload.message is string && payload.message.size() <= 400))
+        && payload.status in ['pending', 'accepted', 'declined']
+        && payload.createdAt is timestamp
+        && payload.updatedAt is timestamp;
+    }
+
     match /users/{uid} {
       allow read: if signedIn() && (isSelf(uid) || isLawyerOrAdmin());
       allow create: if signedIn()
@@ -205,7 +221,9 @@ service cloud.firestore {
         (isSelf(uid)
           && request.resource.data.uid == request.auth.uid
           && isValidProfilePayload(request.resource.data)
-          && request.resource.data.createdAt == resource.data.createdAt)
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.verified == resource.data.verified
+          && request.resource.data.verifiedAt == resource.data.verifiedAt)
         || (isLawyerOrAdmin() && isValidProfilePayload(request.resource.data))
       );
       allow delete: if false;
@@ -229,6 +247,24 @@ service cloud.firestore {
         || (isLawyerOrAdmin()
           && isValidIdentityPayload(request.resource.data)
           && request.resource.data.submittedAt == resource.data.submittedAt)
+      );
+      allow delete: if false;
+    }
+
+    match /matchRequests/{requestId} {
+      allow create: if signedIn()
+        && request.resource.data.fromUid == request.auth.uid
+        && isValidMatch(request.resource.data);
+      allow read: if signedIn() && (
+        request.auth.uid == resource.data.fromUid
+        || request.auth.uid == resource.data.toUid
+        || isLawyerOrAdmin()
+      );
+      allow update: if signedIn() && (
+        (isValidMatch(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt
+          && (request.auth.uid == resource.data.fromUid || request.auth.uid == resource.data.toUid))
+        || (isLawyerOrAdmin() && isValidMatch(request.resource.data))
       );
       allow delete: if false;
     }

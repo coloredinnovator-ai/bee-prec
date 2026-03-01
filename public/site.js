@@ -11,11 +11,13 @@ import {
 import {
   addDoc,
   collection,
+  deleteField,
   doc,
   getDoc,
   getDocs,
   getFirestore,
   increment,
+  limit,
   orderBy,
   query,
   serverTimestamp,
@@ -48,7 +50,8 @@ const state = {
   lastNewsletterSubmit: 0,
   lastClinicSubmit: 0,
   profileDoc: null,
-  identityDoc: null
+  identityDoc: null,
+  profilesCache: []
 };
 
 const LAWYER_CODES = new Set(['BEEPREC-LAWYER', 'BEEPREC-LAWYER-2026']);
@@ -62,6 +65,9 @@ const MAX_HANDLE_LENGTH = 40;
 const MAX_LOCATION_LENGTH = 80;
 const MAX_ORG_LENGTH = 120;
 const MAX_URL_LENGTH = 160;
+const MAX_FOCUS_RAW = 200;
+const MAX_FOCUS_TAGS = 8;
+const MAX_FOCUS_TAG_LEN = 24;
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const ALLOWED_CONSULTATION_AREAS = new Set(['contracts', 'workplace', 'smallBusiness', 'cyber', 'other']);
 const ALLOWED_CONSULTATION_URGENCY = new Set(['low', 'normal', 'high', 'critical']);
@@ -265,6 +271,15 @@ function normalizeFilename(fileName = '') {
     .replace(/^\.+/, '')
     .slice(0, 120) || 'attachment';
   return `${Date.now()}-${safe}`;
+}
+
+function parseFocusAreas(raw = '') {
+  return raw
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0)
+    .slice(0, MAX_FOCUS_TAGS)
+    .map((tag) => tag.slice(0, MAX_FOCUS_TAG_LEN));
 }
 
 function validateUpload(file) {
@@ -479,6 +494,187 @@ function setIdentityStatus(message) {
   if (node) node.textContent = message;
 }
 
+function renderDirectory(filter = '') {
+  const root = el('directoryList');
+  if (!root) return;
+  if (!state.user) {
+    root.innerHTML = '<p class="muted">Sign in to browse the directory.</p>';
+    return;
+  }
+  const term = filter.trim().toLowerCase();
+  const items = (state.profilesCache || []).filter((profile) => {
+    if (!term) return true;
+    return [
+      profile.displayName,
+      profile.handle,
+      profile.organization,
+      profile.location,
+      profile.bio,
+      ...(profile.focusAreas || [])
+    ]
+      .filter(Boolean)
+      .some((val) => String(val).toLowerCase().includes(term));
+  });
+  if (!items.length) {
+    root.innerHTML = '<p class="muted">No matching members found.</p>';
+    return;
+  }
+  root.innerHTML = '';
+  for (const profile of items) {
+    const article = document.createElement('article');
+    article.className = 'item profile-card';
+    const avatar = profile.avatarUrl
+      ? `<img class="profile-avatar" src="${escapeText(profile.avatarUrl)}" alt="${escapeText(profile.displayName || 'Member')}" />`
+      : `<div class="profile-avatar" aria-hidden="true"></div>`;
+    const verifiedBadge = profile.verified ? `<span class="badge verified">Verified</span>` : '';
+    const focus = (profile.focusAreas || []).length ? `<div class="profile-meta">Focus: ${(profile.focusAreas || []).map(escapeText).join(', ')}</div>` : '';
+    const handle = profile.handle ? `@${escapeText(profile.handle)}` : '';
+    const meta = [
+      handle,
+      profile.organization ? escapeText(profile.organization) : '',
+      profile.location ? escapeText(profile.location) : ''
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    article.innerHTML = `
+      <div class="profile-card__head">
+        ${avatar}
+        <div>
+          <strong>${escapeText(profile.displayName || 'Member')}</strong>
+          <div class="profile-meta">${meta}</div>
+        </div>
+        ${verifiedBadge}
+      </div>
+      ${profile.bio ? `<p class="muted">${escapeText(profile.bio)}</p>` : ''}
+      ${focus}
+    `;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ghost';
+    btn.textContent = profile.uid === state.user.uid ? 'This is you' : 'Request intro';
+    btn.disabled = profile.uid === state.user.uid;
+    btn.addEventListener('click', async () => {
+      const message = window.prompt('Add a short note for the introduction (optional):') || '';
+      await createMatchRequest(profile, message);
+    });
+    article.appendChild(btn);
+    root.appendChild(article);
+  }
+}
+
+async function loadDirectory() {
+  const root = el('directoryList');
+  if (!root) return;
+  if (!state.user) {
+    renderDirectory('');
+    return;
+  }
+  try {
+    const snap = await getDocs(query(collection(db, 'profiles'), orderBy('displayName'), limit(200)));
+    state.profilesCache = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
+    renderDirectory(el('directorySearch')?.value || '');
+  } catch (e) {
+    console.error('Directory load failed', e);
+    root.innerHTML = '<p class="muted">Directory unavailable right now.</p>';
+  }
+}
+
+async function createMatchRequest(targetProfile, message = '') {
+  if (!state.user) return showToast('Sign in required');
+  const note = sanitizeText(message || '', 400);
+  try {
+    await addDoc(collection(db, 'matchRequests'), {
+      fromUid: state.user.uid,
+      toUid: targetProfile.uid,
+      fromName: sanitizeText(state.profile?.displayName || state.user.email, MAX_NAME_LENGTH),
+      toName: sanitizeText(targetProfile.displayName || targetProfile.handle || 'Member', MAX_NAME_LENGTH),
+      message: note,
+      status: 'pending',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    showToast('Connection request sent.');
+    await loadConnections();
+  } catch (e) {
+    console.error('Match request failed', e);
+    showToast('Could not send request.');
+  }
+}
+
+async function resolveProfileTarget(raw) {
+  const value = sanitizeText(raw, 120);
+  if (!value) return null;
+  const handle = value.startsWith('@') ? value.slice(1) : value;
+  if (value.length >= 20 && !value.startsWith('@')) {
+    const snap = await getDoc(doc(db, 'profiles', value));
+    if (snap.exists()) return { id: snap.id, ...snap.data() };
+  }
+  const handleSnap = await getDocs(query(collection(db, 'profiles'), where('handle', '==', handle), limit(1)));
+  if (!handleSnap.empty) {
+    const docItem = handleSnap.docs[0];
+    return { id: docItem.id, ...docItem.data() };
+  }
+  return null;
+}
+
+async function loadConnections() {
+  const root = el('connectionList');
+  if (!root) return;
+  if (!state.user) {
+    root.innerHTML = '<p class="muted">Sign in to view connection requests.</p>';
+    return;
+  }
+  const fromSnap = await getDocs(query(collection(db, 'matchRequests'), where('fromUid', '==', state.user.uid)));
+  const toSnap = await getDocs(query(collection(db, 'matchRequests'), where('toUid', '==', state.user.uid)));
+  const items = [...fromSnap.docs, ...toSnap.docs]
+    .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
+    .sort((a, b) => {
+      const ta = toDate(a.createdAt)?.getTime() || 0;
+      const tb = toDate(b.createdAt)?.getTime() || 0;
+      return tb - ta;
+    });
+  if (!items.length) {
+    root.innerHTML = '<p class="muted">No connection requests yet.</p>';
+    return;
+  }
+  root.innerHTML = '';
+  for (const item of items) {
+    const created = toDate(item.createdAt)?.toLocaleString() || 'N/A';
+    const role = item.fromUid === state.user.uid ? 'Sent' : 'Received';
+    const body = item.message ? escapeText(item.message) : 'No message provided.';
+    const row = renderItem({
+      title: `${role} · ${escapeText(item.toName || item.fromName || 'Member')}`,
+      body,
+      meta: `${escapeText(item.status || 'pending')} · ${created}`,
+      actions: item.status === 'pending' && item.toUid === state.user.uid
+        ? [
+            {
+              label: 'Accept',
+              onClick: async () => {
+                await updateDoc(doc(db, 'matchRequests', item.id), {
+                  status: 'accepted',
+                  updatedAt: serverTimestamp()
+                });
+                await loadConnections();
+              }
+            },
+            {
+              label: 'Decline',
+              className: 'danger',
+              onClick: async () => {
+                await updateDoc(doc(db, 'matchRequests', item.id), {
+                  status: 'declined',
+                  updatedAt: serverTimestamp()
+                });
+                await loadConnections();
+              }
+            }
+          ]
+        : []
+    });
+    root.appendChild(row);
+  }
+}
 function setEnvironmentBanner() {
   if (!envBanner) return;
   const host = window.location.host || '';
@@ -645,6 +841,8 @@ async function submitProfile(event) {
   const websiteRaw = sanitizeText(el('profileWebsite')?.value || '', MAX_URL_LENGTH);
   const website = websiteRaw && !/^https?:\/\//i.test(websiteRaw) ? `https://${websiteRaw}` : websiteRaw;
   const bio = sanitizeText(el('profileBio')?.value || '', MAX_PROFILE_BIO);
+  const focusRaw = sanitizeText(el('profileFocus')?.value || '', MAX_FOCUS_RAW);
+  const focusAreas = parseFocusAreas(focusRaw);
   const visibility = sanitizeText(el('profileVisibility')?.value || 'members', 20);
   const offlineAccessRequested = !!el('profileOffline')?.checked;
   const matchingOptIn = !!el('profileMatching')?.checked;
@@ -673,14 +871,19 @@ async function submitProfile(event) {
       location,
       website,
       bio,
+      focusAreas,
       visibility,
       offlineAccessRequested,
       matchingOptIn,
       avatarUrl: avatar.avatarUrl || state.profileDoc?.avatarUrl || '',
       avatarPath: avatar.avatarPath || state.profileDoc?.avatarPath || '',
+      verified: state.profileDoc?.verified ?? false,
       createdAt,
       updatedAt: serverTimestamp()
     };
+    if (state.profileDoc?.verifiedAt) {
+      payload.verifiedAt = state.profileDoc.verifiedAt;
+    }
     await setDoc(doc(db, 'profiles', state.user.uid), payload, { merge: true });
     state.profileDoc = { ...(state.profileDoc || {}), ...payload };
     setProfileStatus('Profile saved.');
@@ -740,6 +943,30 @@ async function submitIdentity(event) {
   } finally {
     state.loading = false;
     setFormLoading('identityForm', false);
+  }
+}
+
+async function submitConnectionRequest(event) {
+  event.preventDefault();
+  if (state.loading) return;
+  if (!state.user) return showToast('Sign in required');
+  const targetRaw = sanitizeText(el('connectionTarget')?.value || '', 120);
+  const message = sanitizeText(el('connectionMessage')?.value || '', 400);
+  if (!targetRaw) return showToast('Enter a member UID or handle.');
+  state.loading = true;
+  setFormLoading('connectionRequestForm', true);
+  try {
+    const targetProfile = await resolveProfileTarget(targetRaw);
+    if (!targetProfile) return showToast('Member not found.');
+    if (targetProfile.uid === state.user.uid) return showToast('You cannot request yourself.');
+    await createMatchRequest(targetProfile, message);
+    el('connectionRequestForm')?.reset?.();
+  } catch (e) {
+    console.error('Connection request failed', e);
+    showToast('Unable to send request.');
+  } finally {
+    state.loading = false;
+    setFormLoading('connectionRequestForm', false);
   }
 }
 async function loadConsultations() {
@@ -1258,8 +1485,14 @@ async function loadModerationIdentity() {
               reviewedAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             });
+            await updateDoc(doc(db, 'profiles', item.uid), {
+              verified: true,
+              verifiedAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
             await loadModerationIdentity();
             await loadIdentityStatus();
+            await loadDirectory();
           }
         },
         {
@@ -1272,13 +1505,64 @@ async function loadModerationIdentity() {
               reviewedAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             });
+            await updateDoc(doc(db, 'profiles', item.uid), {
+              verified: false,
+              verifiedAt: deleteField(),
+              updatedAt: serverTimestamp()
+            });
             await loadModerationIdentity();
             await loadIdentityStatus();
+            await loadDirectory();
           }
         }
       ]
     });
     el('moderationIdentity').appendChild(row);
+  }
+}
+
+async function loadModerationMatches() {
+  clearList(el('moderationMatches'));
+  if (!state.lawyerMode) return;
+  const snap = await getDocs(query(collection(db, 'matchRequests'), orderBy('createdAt', 'desc')));
+  const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
+  if (!items.length) {
+    el('moderationMatches').innerHTML = '<p class="muted">No connection requests.</p>';
+    return;
+  }
+  for (const item of items) {
+    const created = toDate(item.createdAt)?.toLocaleString() || 'N/A';
+    const row = renderItem({
+      title: `${escapeText(item.fromName || 'Member')} → ${escapeText(item.toName || 'Member')}`,
+      body: escapeText(item.message || 'No message provided.'),
+      meta: `${escapeText(item.status || 'pending')} · ${created}`,
+      actions: item.status === 'pending'
+        ? [
+            {
+              label: 'Accept',
+              onClick: async () => {
+                await updateDoc(doc(db, 'matchRequests', item.id), {
+                  status: 'accepted',
+                  updatedAt: serverTimestamp()
+                });
+                await loadModerationMatches();
+              }
+            },
+            {
+              label: 'Decline',
+              className: 'danger',
+              onClick: async () => {
+                await updateDoc(doc(db, 'matchRequests', item.id), {
+                  status: 'declined',
+                  updatedAt: serverTimestamp()
+                });
+                await loadModerationMatches();
+              }
+            }
+          ]
+        : []
+    });
+    el('moderationMatches').appendChild(row);
   }
 }
 
@@ -1299,11 +1583,13 @@ async function loadProfile() {
   if (el('profileLocation')) el('profileLocation').value = data.location || '';
   if (el('profileWebsite')) el('profileWebsite').value = data.website || '';
   if (el('profileBio')) el('profileBio').value = data.bio || '';
+  if (el('profileFocus')) el('profileFocus').value = (data.focusAreas || []).join(', ');
   if (el('profileVisibility')) el('profileVisibility').value = data.visibility || 'members';
   if (el('profileOffline')) el('profileOffline').checked = !!data.offlineAccessRequested;
   if (el('profileMatching')) el('profileMatching').checked = !!data.matchingOptIn;
   const updated = toDate(data.updatedAt)?.toLocaleString() || 'saved';
-  setProfileStatus(`Profile saved · ${updated}`);
+  const verified = data.verified ? ' · Verified' : '';
+  setProfileStatus(`Profile saved · ${updated}${verified}`);
 }
 
 async function loadIdentityStatus() {
@@ -1335,7 +1621,8 @@ async function loadDashboardData() {
       loadModerationDeletionRequests(),
       loadModerationNewsletter(),
       loadModerationClinic(),
-      loadModerationIdentity()
+      loadModerationIdentity(),
+      loadModerationMatches()
     ]);
   }
 }
@@ -1374,6 +1661,12 @@ async function setupEventHandlers() {
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       showSection(btn.dataset.tab);
+      if (btn.dataset.tab === 'directory') {
+        loadDirectory();
+      }
+      if (btn.dataset.tab === 'connections') {
+        loadConnections();
+      }
       if (btn.dataset.tab === 'moderation' && state.lawyerMode) {
         loadModerationConsults();
         loadModerationReports();
@@ -1381,6 +1674,7 @@ async function setupEventHandlers() {
         loadModerationLawyers();
         loadModerationDeletionRequests();
         loadModerationIdentity();
+        loadModerationMatches();
         loadModerationNewsletter();
         loadModerationClinic();
       }
@@ -1643,9 +1937,19 @@ async function setupEventHandlers() {
     identityForm.addEventListener('submit', submitIdentity);
   }
 
+  const connectionForm = el('connectionRequestForm');
+  if (connectionForm) {
+    connectionForm.addEventListener('submit', submitConnectionRequest);
+  }
+
   const librarySearch = el('librarySearch');
   if (librarySearch) {
     librarySearch.addEventListener('input', (e) => renderLibrary(e.target.value || ''));
+  }
+
+  const directorySearch = el('directorySearch');
+  if (directorySearch) {
+    directorySearch.addEventListener('input', (e) => renderDirectory(e.target.value || ''));
   }
 }
 
@@ -1659,6 +1963,8 @@ onAuthStateChanged(auth, async (user) => {
     state.identityDoc = null;
     setProfileStatus('Profile not saved yet.');
     setIdentityStatus('Status: not submitted.');
+    renderDirectory('');
+    loadConnections();
     showSection('dashboard');
     return;
   }
@@ -1672,6 +1978,8 @@ onAuthStateChanged(auth, async (user) => {
   await loadDashboardData();
   await loadProfile();
   await loadIdentityStatus();
+  await loadDirectory();
+  await loadConnections();
   if (state.lawyerMode) {
     await loadModerationConsults();
     await loadModerationReports();
@@ -1679,6 +1987,7 @@ onAuthStateChanged(auth, async (user) => {
     await loadModerationLawyers();
     await loadModerationDeletionRequests();
     await loadModerationIdentity();
+    await loadModerationMatches();
   }
 });
 

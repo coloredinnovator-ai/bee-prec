@@ -489,6 +489,57 @@ button.danger {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.profile-card {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.profile-card__head {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.profile-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  object-fit: cover;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.badge.verified {
+  border-color: rgba(45, 106, 79, 0.6);
+  color: #b7f7d2;
+  background: rgba(45, 106, 79, 0.25);
+}
+
+.badge.pending {
+  border-color: rgba(240, 180, 41, 0.55);
+  color: #ffe2a0;
+  background: rgba(240, 180, 41, 0.2);
+}
+
+.profile-meta {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .item h4 { margin: 0 0 0.35rem; }
 .item p { margin: 0.2rem 0; }
 
