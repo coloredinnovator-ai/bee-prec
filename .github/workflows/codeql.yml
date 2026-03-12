@@ -14,7 +14,38 @@ permissions:
   security-events: write
 
 jobs:
+  capability-check:
+    name: CodeQL Capability Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const repo = await github.rest.repos.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+            const security = repo.data.security_and_analysis || {};
+            const enabled =
+              repo.data.private === false ||
+              security.advanced_security?.status === "enabled" ||
+              security.code_security?.status === "enabled";
+
+            core.notice(
+              enabled
+                ? "Code scanning is available for this repository."
+                : "Skipping CodeQL because GitHub code scanning is not enabled for this repository."
+            );
+            core.setOutput("enabled", enabled ? "true" : "false");
+
   analyze:
+    needs: capability-check
+    if: needs.capability-check.outputs.enabled == 'true'
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     strategy:
@@ -29,3 +60,11 @@ jobs:
           queries: security-extended
       - uses: github/codeql-action/autobuild@v4
       - uses: github/codeql-action/analyze@v4
+
+  skipped:
+    needs: capability-check
+    if: needs.capability-check.outputs.enabled != 'true'
+    name: CodeQL Skipped
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Skipping CodeQL because GitHub code scanning is unavailable for this repository."
