@@ -15,7 +15,7 @@ jobs:
       - name: Curl prod
         run: |
           set -euo pipefail
-          for url in https://bee-prec-site.web.app https://bee-prec-site-staging.web.app; do
+          for url in "${{ vars.BEE_PREC_PROD_URL || 'https://bee-prec-site.web.app' }}" "${{ vars.BEE_PREC_STAGING_URL || 'https://bee-prec-site-staging.web.app' }}"; do
             resp=$(curl -sS -w '\nHTTP:%{http_code}' "$url")
             code=$(echo "$resp" | tail -n1 | sed 's/HTTP://')
             body=$(echo "$resp" | head -n -1)

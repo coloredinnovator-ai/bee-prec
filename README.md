@@ -1,97 +1,69 @@
 # BEE COOP
 
-Client website repository for BEE COOP.
+Route-based Next.js website for BEE COOP, deployed through Firebase App Hosting and backed by Firebase Auth, Firestore, Storage, GitHub Actions, and a GCP backup ledger.
 
-## Project scope
+## Architecture
 
-- Website: BEE COOP community/legal co-op platform
-- Not a native or hybrid app. This is strictly a website.
-- Firebase project: `nanny-tech`
-- Hosting targets:
-  - production: `bee-prec-site`
-  - staging: `bee-prec-site-staging`
-- Repository default branch: `main`
+- Runtime: Next.js App Router on Firebase App Hosting
+- Public routes: `/`, `/clinic`, `/report-harm`, `/community`, `/library`, `/news`
+- Secure routes: `/account/login`, `/account/profile`, `/admin/login`, `/admin`
+- Backend: Firebase Auth for sign-in, Firestore collections for operational data, Storage for evidence uploads
+- Server-side writes: public and secure form submissions land through Next route handlers using Firebase Admin
 
-## Deployment model (remote-first)
+## Core collections
 
-Nothing is published locally for routine releases. GitHub Actions is the single deployment path.
+- `users`
+- `profiles`
+- `clinicSignups`
+- `consultations`
+- `incidentReports`
+- `communityPosts`
+- `communityComments`
+- `newsletterSubscribers`
+- `identityVerifications`
+- `matchRequests`
+- `deletionRequests`
+- `auditEvents`
+- `backupRuns`
 
-1. Push to `main` deploys production (`bee-prec-site`).
-2. Push to `MAROON-staging` deploys staging (`bee-prec-site-staging`).
-3. `workflow_dispatch` in GitHub Actions can also trigger deploy by selecting:
-   - `main` (production)
-   - `MAROON-staging` (staging)
-4. Deploy flow is strict and centralized in `.github/workflows/firebase-hosting-merge.yml`:
-   - Firebase Hosting
-   - Firestore rules
-   - Storage rules
-   - Rules deployment command:
-     `npx firebase-tools deploy --project nanny-tech --only firestore:rules,storage --non-interactive`
-
-5. Staging and production jobs run independently by branch and both now enforce rules deployment instead of tolerant/fallback behavior.
-
-## Status (2026-02-27, UTC)
-
-- `main` push workflow run `22504968481`: success (`deploy-main`).
-- `MAROON-staging` manual dispatch run `22505025938`: success (`deploy-staging`).
-- CI is fully remote (GCP-hosted runners only); local run/test execution is not part of release path.
-
-## GitHub Actions
-
-- Deploy pipeline: `.github/workflows/firebase-hosting-merge.yml`
-  - Produces production/staging hosting deployments.
-  - Pushes Firestore and Storage security rules on deploy.
-  - Uses `FIREBASE_SERVICE_ACCOUNT_NANNY_TECH` secret in GitHub repository settings.
-
-- Health checks pipeline: `.github/workflows/bee-prec-smoke-tests.yml`
-  - Scheduled every 30 minutes
-  - Validates site reachability and basic content marker
-  - Supports manual dispatch
-
-## Required repository settings
-
-Repository Secret:
-
-- `FIREBASE_SERVICE_ACCOUNT_NANNY_TECH` (Firebase service account JSON for project `nanny-tech`)
-
-Branch protections (recommended):
-
-- Require review on `main`
-- Require status checks from deploy workflow before merge
-
-## GCP / Operations bootstrap
-
-For production operations observability in GCP:
+## Local development
 
 ```bash
-./scripts/bootstrap_gcp_observability.sh nanny-tech bee-prec-site.web.app production [notification_channel_id]
+npm install
+npm run dev
 ```
 
-- `notification_channel_id` is optional, but recommended for paging or email/Webhook alerts.
-- If omitted, the script will create the uptime check and skip policy notification wiring.
+Recommended environment variables are listed in [`.env.example`](/Users/user1/Desktop/BEE-PREC/.env.example) and [`docs/ops/env-inventory.md`](/Users/user1/Desktop/BEE-PREC/docs/ops/env-inventory.md).
 
-## Custom domain
-
-Current production Firebase URL:
-
-- https://bee-prec-site.web.app
-
-To use your own domain:
-
-1. Open Firebase Hosting for `bee-prec-site`
-2. Add and verify your domain
-3. Add DNS TXT/CNAME records from Firebase
-
-## Helpful checks
+## Quality checks
 
 ```bash
-git status --short --branch
-git log --oneline -n 3
+npm run lint
+npm run build
+npm run test:unit
+npm run test:e2e
 ```
 
-## Local scripts (for controlled manual recovery only)
+## Deployment model
 
-- `./scripts/deploy_bee_prec_gcp.sh`
-- `./scripts/deploy_bee_prec_all_gcp.sh`
-- `./scripts/bootstrap_web_firebase.sh`
-- `./scripts/bootstrap_gcp_observability.sh`
+- `main`: production branch connected to Firebase App Hosting
+- `MAROON-staging`: staging branch connected to Firebase App Hosting
+- GitHub Actions provide release gates, route smoke tests, backup ledger generation, and restore-drill evidence
+- Firestore rules, indexes, and Storage rules remain repo-managed
+
+See:
+
+- [`apphosting.yaml`](/Users/user1/Desktop/BEE-PREC/apphosting.yaml)
+- [`apphosting.staging.yaml`](/Users/user1/Desktop/BEE-PREC/apphosting.staging.yaml)
+- [`docs/ops/app-hosting-setup.md`](/Users/user1/Desktop/BEE-PREC/docs/ops/app-hosting-setup.md)
+
+## Backup operations
+
+- Nightly ledger workflow: [`.github/workflows/backup-ledger.yml`](/Users/user1/Desktop/BEE-PREC/.github/workflows/backup-ledger.yml)
+- Monthly restore drill workflow: [`.github/workflows/restore-drill.yml`](/Users/user1/Desktop/BEE-PREC/.github/workflows/restore-drill.yml)
+- Backup generation script: [`scripts/backup/generate_ledger.mjs`](/Users/user1/Desktop/BEE-PREC/scripts/backup/generate_ledger.mjs)
+- Restore drill script: [`scripts/backup/restore_drill.mjs`](/Users/user1/Desktop/BEE-PREC/scripts/backup/restore_drill.mjs)
+
+## Current constraint
+
+The repository is now set up for the App Hosting architecture, but the live GCP / Firebase App Hosting connection, backup buckets, and recovery project still need to be configured with authenticated access in the target environment.

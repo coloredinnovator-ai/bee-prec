@@ -16,7 +16,7 @@ jobs:
       - name: ZAP baseline
         uses: zaproxy/action-baseline@v0.11.0
         with:
-          target: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target || 'https://bee-prec-site.web.app' }}
+          target: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target || vars.BEE_PREC_PROD_URL || 'https://bee-prec-site.web.app' }}
           rules_file_name: ignore.rules
           cmd_options: '-a'
       - name: Upload report

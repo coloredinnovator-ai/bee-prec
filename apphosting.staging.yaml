@@ -1,0 +1,14 @@
+runConfig:
+  cpu: 1
+  memoryMiB: 512
+  minInstances: 0
+  maxInstances: 2
+  concurrency: 20
+
+env:
+  - variable: NEXT_PUBLIC_APP_ENV
+    value: staging
+  - variable: BACKUP_LEDGER_COLLECTION
+    value: backupRuns
+    availability:
+      - RUNTIME

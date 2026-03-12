@@ -1,0 +1,27 @@
+name: Feature request
+description: Capture a website, legal workflow, or operations enhancement.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: State the route, workflow, or operational result needed.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and constraints
+      description: Note legal, moderation, GCP, GitHub, or backup requirements.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List the behaviors or checks that prove the change is complete.
+    validations:
+      required: true

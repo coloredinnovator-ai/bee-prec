@@ -1,73 +1,176 @@
 # Data Collection and Verification
 
-This document tracks member data collection for BEE COOP. All collection requires explicit consent and authenticated access.
+This document tracks the website-era data model after the Next.js reset. Public and authenticated writes now flow through server handlers using Firebase Admin, with audit events recorded for intake, posting, and staff views.
 
-## Profiles
+## Public intake collections
 
-Collection: `profiles/{uid}`
+### `clinicSignups/{id}`
 
-Fields:
-- `uid` (string)
-- `displayName` (string)
-- `handle` (string, optional)
-- `organization` (string, optional)
-- `location` (string, optional)
-- `website` (string, optional)
-- `bio` (string, optional)
-- `focusAreas` (string[], optional)
-- `avatarUrl` (string, optional)
-- `avatarPath` (string, optional)
-- `verified` (bool, optional)
-- `verifiedAt` (timestamp, optional)
-- `visibility` (`members` | `public`)
-- `offlineAccessRequested` (bool)
-- `matchingOptIn` (bool)
-- `createdAt` (timestamp)
-- `updatedAt` (timestamp)
+- `name`
+- `email`
+- `emailLower`
+- `organization`
+- `location`
+- `stage`
+- `helpType`
+- `preferredContact`
+- `description`
+- `consent`
+- `status`
+- `source`
+- `createdAt`
+- `updatedAt`
 
-Profile photos are stored in Storage at `profiles/{uid}/...`.
+### `incidentReports/{id}`
 
-## Identity Verification
+- `title`
+- `category`
+- `priority`
+- `businessName`
+- `location`
+- `body`
+- `occurredAt`
+- `anonymous`
+- `reporterAlias`
+- `reporterEmail`
+- `reportedBy`
+- `status`
+- `hasAttachment`
+- `attachmentPath`
+- `attachmentUrl`
+- `source`
+- `createdAt`
+- `updatedAt`
+- `deleted`
 
-Collection: `identityVerifications/{uid}`
+Evidence uploads remain stored in Storage under `incidents/{uid-or-public}/{reportId}/...`.
 
-Fields:
-- `uid` (string)
-- `legalName` (string)
-- `idType` (`drivers-license` | `passport` | `state-id` | `other`)
-- `documentUrl` (string)
-- `documentPath` (string)
-- `documentName` (string, optional)
-- `status` (`pending` | `verified` | `rejected`)
-- `consent` (bool, must be true)
-- `submittedAt` (timestamp)
-- `updatedAt` (timestamp)
-- `reviewedBy` (string, optional)
-- `reviewedAt` (timestamp, optional)
+## Member collections
 
-Identity documents are stored in Storage at `identity/{uid}/...` and are readable only by the uploader and verified staff roles.
+### `users/{uid}`
 
-## Match Requests
+- `uid`
+- `email`
+- `displayName`
+- `role`
+- `deleted`
+- `createdAt`
+- `updatedAt`
 
-Collection: `matchRequests/{id}`
+### `profiles/{uid}`
 
-Fields:
-- `fromUid` (string)
-- `toUid` (string)
-- `fromName` (string)
-- `toName` (string)
-- `message` (string, optional)
-- `status` (`pending` | `accepted` | `declined`)
-- `createdAt` (timestamp)
-- `updatedAt` (timestamp)
+- `uid`
+- `displayName`
+- `handle`
+- `organization`
+- `location`
+- `website`
+- `bio`
+- `focusAreas`
+- `avatarUrl`
+- `avatarPath`
+- `verified`
+- `verifiedAt`
+- `visibility`
+- `offlineAccessRequested`
+- `matchingOptIn`
+- `createdAt`
+- `updatedAt`
 
-## Access Control
+### `communityPosts/{id}`
+
+- `title`
+- `body`
+- `createdBy`
+- `authorName`
+- `flags`
+- `removed`
+- `createdAt`
+- `updatedAt`
+
+### `communityComments/{id}`
+
+- `postId`
+- `body`
+- `createdBy`
+- `authorName`
+- `createdAt`
+- `deleted`
+
+### `matchRequests/{id}`
+
+- `fromUid`
+- `toUid`
+- `fromName`
+- `toName`
+- `message`
+- `status`
+- `createdAt`
+- `updatedAt`
+
+## Staff and operations collections
+
+### `identityVerifications/{uid}`
+
+- `uid`
+- `legalName`
+- `idType`
+- `documentUrl`
+- `documentPath`
+- `documentName`
+- `status`
+- `consent`
+- `submittedAt`
+- `updatedAt`
+- `reviewedBy`
+- `reviewedAt`
+
+### `deletionRequests/{id}`
+
+- `requesterId`
+- `requesterAlias`
+- `requesterEmail`
+- `reason`
+- `status`
+- `requestedAt`
+- `updatedAt`
+- `updatedBy`
+- `reviewedAt`
+- `reviewedBy`
+
+### `auditEvents/{id}`
+
+- `eventType`
+- `actorType`
+- `actorId`
+- `actorEmail`
+- `targetCollection`
+- `targetId`
+- `status`
+- `detail`
+- `ipAddress`
+- `userAgent`
+- `createdAt`
+
+### `backupRuns/{id}`
+
+- `status`
+- `summary`
+- `firestoreBucket`
+- `firestoreObject`
+- `storageBucket`
+- `storageObject`
+- `createdAt`
+
+## Access control
 
 See:
-- `/Users/user1/Desktop/BEE-PREC/firestore.rules`
-- `/Users/user1/Desktop/BEE-PREC/storage.rules`
+
+- [firestore.rules](/Users/user1/Desktop/BEE-PREC/firestore.rules)
+- [storage.rules](/Users/user1/Desktop/BEE-PREC/storage.rules)
 
 ## Notes
 
-- No automated decisions are made based on ID data; verification is manual.
-- Upload limits: profile photos 2MB, ID documents 5MB.
+- No automated decisions are made from identity data; verification remains manual.
+- Public writes are validated server-side before they touch Firestore or Storage.
+- Profile photos are still capped at 2MB; identity files and incident evidence remain capped at 5MB.
