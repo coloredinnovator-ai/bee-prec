@@ -1,10 +1,11 @@
 name: CodeQL
+
 on:
   push:
     branches: [main, MAROON-staging]
   pull_request:
   schedule:
-    - cron: '30 4 * * 1'
+    - cron: "30 4 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -14,7 +15,17 @@ permissions:
 
 jobs:
   analyze:
-    uses: github/codeql-action/.github/workflows/codeql.yml@v4
-    with:
-      languages: javascript
-      queries: security-extended
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended
+      - uses: github/codeql-action/autobuild@v4
+      - uses: github/codeql-action/analyze@v4

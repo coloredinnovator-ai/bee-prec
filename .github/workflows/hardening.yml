@@ -14,6 +14,9 @@ permissions:
 jobs:
   playwright-smoke:
     runs-on: ubuntu-latest
+    env:
+      PROD_URL: ${{ vars.BEE_PREC_PROD_URL || 'https://bee-prec-site.web.app' }}
+      STAGE_URL: ${{ vars.BEE_PREC_STAGING_URL || 'https://bee-prec-site-staging.web.app' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,16 +24,16 @@ jobs:
           node-version: 20
       - name: Install Playwright
         run: |
-          npm install playwright@1.41.2
+          npm ci
           npx playwright install --with-deps chromium
       - name: Smoke prod/staging
-        env:
-          PROD_URL: ${{ vars.BEE_PREC_PROD_URL || 'https://bee-prec-site.web.app' }}
-          STAGE_URL: ${{ vars.BEE_PREC_STAGING_URL || 'https://bee-prec-site-staging.web.app' }}
         run: |
           node <<'SCRIPT'
-          const { chromium } = require('playwright');
-          const urls = [process.env.PROD_URL, process.env.STAGE_URL];
+          const { chromium } = require('@playwright/test');
+          const urls =
+            process.env.GITHUB_REF_NAME === 'main'
+              ? [process.env.PROD_URL, process.env.STAGE_URL]
+              : [process.env.STAGE_URL];
           (async() => {
             const browser = await chromium.launch({ headless: true });
             const context = await browser.newContext({ ignoreHTTPSErrors: true });
@@ -87,7 +90,17 @@ jobs:
     needs: playwright-smoke
     runs-on: ubuntu-latest
     steps:
+      - name: Curl staging on staging branch
+        if: github.ref_name != 'main'
+        run: |
+          set -euo pipefail
+          resp=$(curl -sS -w '\nHTTP:%{http_code}' "${{ vars.BEE_PREC_STAGING_URL || 'https://bee-prec-site-staging.web.app' }}")
+          code=$(echo "$resp" | tail -n1 | sed 's/HTTP://')
+          body=$(echo "$resp" | head -n -1)
+          if [ "$code" != "200" ]; then echo "Bad status $code"; exit 1; fi
+          echo "$body" | grep -q "BEE COOP" || (echo "Marker missing"; exit 1)
       - name: Curl prod
+        if: github.ref_name == 'main'
         run: |
           set -euo pipefail
           resp=$(curl -sS -w '\nHTTP:%{http_code}' "${{ vars.BEE_PREC_PROD_URL || 'https://bee-prec-site.web.app' }}")
