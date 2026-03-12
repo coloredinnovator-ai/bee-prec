@@ -25,8 +25,8 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Smoke prod/staging
         env:
-          PROD_URL: https://bee-prec-site.web.app
-          STAGE_URL: https://bee-prec-site-staging.web.app
+          PROD_URL: ${{ vars.BEE_PREC_PROD_URL || 'https://bee-prec-site.web.app' }}
+          STAGE_URL: ${{ vars.BEE_PREC_STAGING_URL || 'https://bee-prec-site-staging.web.app' }}
         run: |
           node <<'SCRIPT'
           const { chromium } = require('playwright');
@@ -90,7 +90,7 @@ jobs:
       - name: Curl prod
         run: |
           set -euo pipefail
-          resp=$(curl -sS -w '\nHTTP:%{http_code}' https://bee-prec-site.web.app)
+          resp=$(curl -sS -w '\nHTTP:%{http_code}' "${{ vars.BEE_PREC_PROD_URL || 'https://bee-prec-site.web.app' }}")
           code=$(echo "$resp" | tail -n1 | sed 's/HTTP://')
           body=$(echo "$resp" | head -n -1)
           if [ "$code" != "200" ]; then echo "Bad status $code"; exit 1; fi

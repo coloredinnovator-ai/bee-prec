@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Validate homepage
         env:
-          TARGET_URL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.targetUrl || 'https://bee-prec-site.web.app' }}
+          TARGET_URL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.targetUrl || vars.BEE_PREC_PROD_URL || 'https://bee-prec-site.web.app' }}
           REQUIRE_TEXT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.requireText || 'BEE COOP' }}
         run: |
           set -euo pipefail

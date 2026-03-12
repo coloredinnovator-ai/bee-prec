@@ -257,5 +257,15 @@ service cloud.firestore {
       allow read: if isLawyerOrAdmin();
       allow delete: if false;
     }
+
+    match /auditEvents/{eventId} {
+      allow read: if isLawyerOrAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /backupRuns/{runId} {
+      allow read: if isLawyerOrAdmin();
+      allow create, update, delete: if false;
+    }
   }
 }

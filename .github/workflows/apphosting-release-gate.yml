@@ -1,0 +1,27 @@
+name: App Hosting Release Gate
+
+on:
+  push:
+    branches:
+      - main
+      - MAROON-staging
+  workflow_dispatch:
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - name: Explain rollout ownership
+        run: |
+          echo "App Hosting branch-connected rollout is expected to handle deployment."
+          echo "This workflow acts as a release gate for main and MAROON-staging."

@@ -1,0 +1,38 @@
+name: Restore Drill
+
+on:
+  schedule:
+    - cron: "0 5 1 * *"
+  workflow_dispatch:
+
+jobs:
+  restore-drill:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      FIRESTORE_BACKUP_BUCKET: ${{ secrets.FIRESTORE_BACKUP_BUCKET }}
+      FIRESTORE_BACKUP_PREFIX: ${{ secrets.FIRESTORE_BACKUP_PREFIX }}
+      STORAGE_BACKUP_BUCKET: ${{ secrets.STORAGE_BACKUP_BUCKET }}
+      STORAGE_INVENTORY_PREFIX: ${{ secrets.STORAGE_INVENTORY_PREFIX }}
+      RECOVERY_PROJECT_ID: ${{ secrets.RECOVERY_PROJECT_ID }}
+      RECOVERY_COLLECTIONS: ${{ secrets.RECOVERY_COLLECTIONS }}
+      RESTORE_MODE: dry-run
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_NANNY_TECH }}
+      - run: node scripts/backup/restore_drill.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: restore-drill
+          path: artifacts/restore-drill/*
