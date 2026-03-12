@@ -6,8 +6,29 @@ runConfig:
   concurrency: 20
 
 env:
+  - variable: FIREBASE_PROJECT_ID
+    value: nanny-tech
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: FIREBASE_STORAGE_BUCKET
+    value: nanny-tech.firebasestorage.app
+    availability:
+      - RUNTIME
   - variable: NEXT_PUBLIC_APP_ENV
     value: staging
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: AIzaSyB6xFIHo1dScHVia598sWrfJ90OVms0U8E
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: nanny-tech.firebaseapp.com
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: nanny-tech
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: nanny-tech.firebasestorage.app
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "269966152674"
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: 1:269966152674:web:310da6b6d60f4e4eb75fbb
   - variable: BACKUP_LEDGER_COLLECTION
     value: backupRuns
     availability:
