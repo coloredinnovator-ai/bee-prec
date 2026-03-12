@@ -6,6 +6,8 @@ runConfig:
   concurrency: 40
 
 env:
+  - variable: NEXT_PUBLIC_APP_ENV
+    value: production
   - variable: FIREBASE_PROJECT_ID
     value: nanny-tech
     availability:
