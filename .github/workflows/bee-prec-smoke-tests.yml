@@ -1,31 +1,66 @@
-name: BEE COOP static production smoke checks
+name: BEE COOP static smoke checks
 
 on:
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
-      targetUrl:
-        description: URL to validate
+      environment:
+        description: Environment to validate when targetUrl is not provided
         required: false
-        default: https://bee-prec-site.web.app
+        default: all
+        type: choice
+        options:
+          - all
+          - production
+          - staging
+      targetUrl:
+        description: Optional explicit URL override
+        required: false
+        default: ""
       requireText:
         description: Required text on homepage
         required: false
         default: BEE COOP
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   smoke-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - environment: production
+            url: https://bee-prec-site.web.app
+          - environment: staging
+            url: https://bee-prec-site-staging.web.app
+    name: Validate homepage (${{ matrix.environment }})
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
       - name: Validate homepage
         env:
-          TARGET_URL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.targetUrl || 'https://bee-prec-site.web.app' }}
+          TARGET_URL_OVERRIDE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.targetUrl || '' }}
+          REQUESTED_ENVIRONMENT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'all' }}
           REQUIRE_TEXT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.requireText || 'BEE COOP' }}
+          MATRIX_ENVIRONMENT: ${{ matrix.environment }}
+          DEFAULT_TARGET_URL: ${{ matrix.url }}
         run: |
           set -euo pipefail
+          if [[ -n "${TARGET_URL_OVERRIDE}" && "${MATRIX_ENVIRONMENT}" != "production" ]]; then
+            echo "Skipping ${MATRIX_ENVIRONMENT}; explicit URL override runs on the production matrix entry only."
+            exit 0
+          fi
+          if [[ -z "${TARGET_URL_OVERRIDE}" && "${REQUESTED_ENVIRONMENT}" != "all" && "${REQUESTED_ENVIRONMENT}" != "${MATRIX_ENVIRONMENT}" ]]; then
+            echo "Skipping ${MATRIX_ENVIRONMENT}; workflow_dispatch requested ${REQUESTED_ENVIRONMENT}."
+            exit 0
+          fi
+          TARGET_URL="${TARGET_URL_OVERRIDE:-${DEFAULT_TARGET_URL}}"
           echo "Testing ${TARGET_URL}"
           response="$(curl --silent --show-error --location --max-time 20 --write-out 'HTTP_STATUS:%{http_code}' --output /tmp/bee-prec-home.html "${TARGET_URL}")"
           status="$(printf '%s' "${response}" | tr ';' '\n' | grep -i '^HTTP_STATUS:' | awk -F: '{print $2}')"

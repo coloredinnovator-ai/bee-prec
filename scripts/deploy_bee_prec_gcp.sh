@@ -9,6 +9,7 @@ ALLOW_BRANCH_BYPASS="${ALLOW_BRANCH_BYPASS:-0}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+CANONICAL_PUBLIC_DIR="${REPO_ROOT}/public"
 
 case "${HOSTING_TARGET}" in
   bee-prec-site)
@@ -26,13 +27,13 @@ case "${HOSTING_TARGET}" in
 esac
 
 if [[ -z "${PROJECT_ID}" ]]; then
-  echo "Usage: $0 <PROJECT_ID> [hosting_target] [public_dir]"
+  echo "Usage: $0 <PROJECT_ID> [hosting_target] [public]"
   echo "Example: $0 nanny-tech bee-prec-site public"
   exit 1
 fi
 
 if [[ "${HOSTING_TARGET}" != "bee-prec-site" && "${HOSTING_TARGET}" != "bee-prec-site-staging" ]]; then
-  echo "Usage: $0 <PROJECT_ID> [hosting_target] [public_dir]"
+  echo "Usage: $0 <PROJECT_ID> [hosting_target] [public]"
   echo "Error: hosting target must be 'bee-prec-site' or 'bee-prec-site-staging'."
   exit 1
 fi
@@ -45,6 +46,15 @@ fi
 
 if [[ ! -d "${PUBLIC_DIR_PATH}" ]]; then
   echo "Error: ${PUBLIC_DIR} directory not found."
+  exit 1
+fi
+
+PUBLIC_DIR_PATH="$(cd "${PUBLIC_DIR_PATH}" && pwd)"
+CANONICAL_PUBLIC_DIR="$(cd "${CANONICAL_PUBLIC_DIR}" && pwd)"
+
+if [[ "${PUBLIC_DIR_PATH}" != "${CANONICAL_PUBLIC_DIR}" ]]; then
+  echo "Error: Firebase Hosting is wired to the repo-root public directory via firebase.json."
+  echo "Pass 'public' (or the absolute path to ${CANONICAL_PUBLIC_DIR}) to validate the actual deployed bundle."
   exit 1
 fi
 

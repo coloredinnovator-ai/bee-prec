@@ -113,8 +113,8 @@ export default function GlobalMapPage() {
                 onClick={() => setSelectedProfile(profile)}
               >
                 <Pin 
-                  background={profile.role === 'lawyer' ? '#f59e0b' : '#10b981'} 
-                  borderColor={profile.role === 'lawyer' ? '#d97706' : '#059669'}
+                  background="#10b981"
+                  borderColor="#059669"
                   glyphColor="#fff" 
                 />
               </AdvancedMarker>

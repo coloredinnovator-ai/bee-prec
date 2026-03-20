@@ -159,10 +159,10 @@
             <div class="chat-row agent">Pulled resources: ICA cooperative identity, USFWC legal templates, CLT financing guides.</div>
           </div>
           <div class="agent-chat__input">
-            <p class="muted">This static site is the live public intake surface. Start a real clinic request or open the member portal instead of a disabled demo console.</p>
+            <p class="muted">This static site is the live public intake surface. Start a real clinic request or use dashboard sign-in before opening member tools.</p>
             <div class="hero__actions">
               <a class="cta ghost" href="#clinic">Start clinic intake</a>
-              <a class="cta text" href="#portal">Open portal</a>
+              <a class="cta text" href="#portal" data-open-tab="dashboard">Go to member sign-in</a>
             </div>
           </div>
         </div>
@@ -323,6 +323,7 @@
           <span>I consent to receive emails from BEE COOP.</span>
         </label>
         <button type="submit">Subscribe</button>
+        <p class="muted">This form creates a newsletter subscription. If you are already subscribed, resubmitting here will not change your saved preferences.</p>
       </form>
     </section>
 
@@ -350,9 +351,9 @@
         <div>
           <p class="eyebrow">Forum</p>
           <h2>Connect and share</h2>
-          <p>Discuss, ask, and collaborate with members. Posts and comments live in the community tab.</p>
+          <p>Read approved posts on the public board. Sign in from the dashboard to publish or comment.</p>
         </div>
-        <a class="cta primary" href="#community">Open forum</a>
+        <a class="cta primary" href="#portal" data-open-tab="community">Open public board</a>
       </div>
     </section>
 
@@ -361,7 +362,7 @@
         <div>
           <p class="eyebrow">Member Portal</p>
           <h2>Consultations, reports, community</h2>
-          <p>Sign in to access your requests and participate.</p>
+          <p>Use the dashboard to sign in, then open your private requests or the community board.</p>
         </div>
       </div>
       <main class="shell">
@@ -522,7 +523,7 @@
             <h2>Consultations</h2>
             <form id="consultationForm" class="card">
               <h3>Request consultation</h3>
-              <p class="muted" id="consultationStatus">Sign in to request a private consultation. Requests remain visible only to you and the triage team.</p>
+              <p class="muted" id="consultationStatus">Sign in from the dashboard to request a private consultation. Requests remain visible only to you and the triage team.</p>
               <label>Case topic</label>
               <input id="consultTopic" required />
               <label>Consultation notes</label>
@@ -556,7 +557,7 @@
             <h2>Incident reports</h2>
             <form id="reportForm" class="card">
               <h3>Report business crime / community harm</h3>
-              <p class="muted" id="reportStatus">Sign in to file a private report. Reports remain visible only to you and authorized reviewers.</p>
+              <p class="muted" id="reportStatus">Sign in from the dashboard to file a private report. Reports remain visible only to you and authorized reviewers.</p>
               <label>Headline</label>
               <input id="reportTitle" required />
               <label>Category</label>
@@ -597,6 +598,7 @@
 
           <section class="panel" id="community">
             <h2>Community forum</h2>
+            <p id="communityStatus" class="muted">Read approved posts here. Sign in from the dashboard to publish, comment, or flag content.</p>
             <form id="communityPostForm" class="card">
               <h3>Post to community</h3>
               <label>Post title</label>

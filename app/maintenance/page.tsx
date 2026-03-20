@@ -34,7 +34,7 @@ export default function MaintenancePage() {
   useEffect(() => {
     if (!user || !profile) return;
 
-    const canManageTickets = ['lawyer', 'admin', 'board', 'maintenance'].includes(profile.role);
+    const canManageTickets = ['admin', 'board', 'maintenance'].includes(profile.role);
     
     let q;
     if (canManageTickets) {
@@ -76,6 +76,7 @@ export default function MaintenancePage() {
         reportedBy: user?.uid,
         status: 'open',
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
       
       setTitle('');
@@ -93,7 +94,8 @@ export default function MaintenancePage() {
   const updateStatus = async (id: string, newStatus: MaintenanceTicket['status']) => {
     try {
       await updateDoc(doc(db, 'maintenance_tickets', id), {
-        status: newStatus
+        status: newStatus,
+        updatedAt: serverTimestamp()
       });
     } catch (error) {
       console.error("Error updating status:", error);
@@ -132,7 +134,7 @@ export default function MaintenancePage() {
     );
   }
 
-  const canManageTickets = profile?.role === 'board' || profile?.role === 'maintenance';
+  const canManageTickets = ['admin', 'board', 'maintenance'].includes(profile?.role || '');
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-900 font-sans">

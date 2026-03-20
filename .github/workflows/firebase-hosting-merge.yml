@@ -22,6 +22,9 @@ on:
       - "storage.rules"
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   resolve-release-context:
     runs-on: ubuntu-latest
@@ -68,7 +71,7 @@ jobs:
           ref: ${{ github.ref }}
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Validate static web assets
         run: test -f public/index.html && test -f public/site.js
 

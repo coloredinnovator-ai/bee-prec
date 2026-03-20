@@ -4,13 +4,20 @@ on:
     - cron: '15 */4 * * *'
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   ping-prod-staging:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Curl prod
         run: |
@@ -26,15 +33,18 @@ jobs:
   firestore-probe:
     needs: ping-prod-staging
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Write/read probe
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_NANNY_TECH }}
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
-          npm install firebase-admin@12.1.0
-          node <<'SCRIPT'
+          npm exec --yes --package=firebase-admin@13.7.0 -- node <<'SCRIPT'
           const admin = require('firebase-admin');
           const sa = require(process.env.GOOGLE_APPLICATION_CREDENTIALS);
           admin.initializeApp({ credential: admin.credential.cert(sa) });

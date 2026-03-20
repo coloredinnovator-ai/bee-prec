@@ -41,6 +41,13 @@ GitHub Actions is the primary deployment path for the static site.
 8. `./scripts/deploy_bee_prec_gcp.sh` follows the same contract locally: it deploys shared rules before Hosting and enforces branch-to-environment alignment unless `ALLOW_BRANCH_BYPASS=1` is explicitly set.
 9. `./scripts/deploy_bee_prec_all_gcp.sh` is an emergency-only escape hatch and is disabled by default unless `ALLOW_MULTI_ENV_DEPLOY=1` is explicitly set.
 
+## Staging parity
+
+- `MAROON-staging` is the only normal branch that may deploy the staging Hosting target `bee-prec-site-staging`.
+- Staging is expected to validate the same static runtime contract as production: the same `public/` surface, the same shared Firestore/Storage rules, and the same Firebase project wiring shape, only against the staging Hosting target.
+- Scheduled smoke coverage for both production and staging lives in `.github/workflows/bee-prec-smoke-tests.yml`. Cross-environment parity and deeper security/runtime checks live in `.github/workflows/hardening.yml`.
+- If staging intentionally diverges from production behavior, that divergence must be documented here and in the workflow or script contract in the same change.
+
 ## Runtime ownership
 
 - Public intake, clinic signup, newsletter capture, and static moderation widgets live under `public/`.
@@ -53,6 +60,12 @@ GitHub Actions is the primary deployment path for the static site.
 - Treat `app/attorneys/profile` as the canonical attorney consultation and service-catalog surface in the Next.js runtime.
 - Some moderation widgets still exist in `public/` because that static Hosting surface remains the live deploy target. Those widgets do not create a separate release contract; they are legacy runtime behavior until a written cutover or removal lands.
 - Do not describe a Next.js operator path as "live" unless the corresponding deploy path, smoke coverage, and README contract are updated in the same change.
+
+## Post-release branch contract
+
+- A successful production deploy from `main` does not, by itself, update staging. `MAROON-staging` must still be kept deployable under the same release contract before the next staging run.
+- If a production fix changes Hosting behavior, shared rules, or deploy scripts, mirror that fix into `MAROON-staging` before treating staging as a valid rehearsal lane again.
+- Do not use emergency bypass flags such as `ALLOW_BRANCH_BYPASS=1` or `ALLOW_MULTI_ENV_DEPLOY=1` as substitutes for normal branch parity.
 
 ## CI and operations assets
 

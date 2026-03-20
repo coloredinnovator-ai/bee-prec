@@ -21,16 +21,13 @@ interface FirestoreErrorInfo {
   error: string;
   operationType: OperationType;
   path: string | null;
-  authInfo: any;
+  hasAuthenticatedUser: boolean;
 }
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null, auth: any) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth?.currentUser?.uid,
-      email: auth?.currentUser?.email,
-    },
+    hasAuthenticatedUser: Boolean(auth?.currentUser),
     operationType,
     path
   };

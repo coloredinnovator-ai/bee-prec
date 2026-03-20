@@ -242,6 +242,42 @@ function showSection(sectionId) {
   });
 }
 
+async function openPortalSection(sectionId) {
+  showSection(sectionId);
+  const portal = document.getElementById('portal');
+  if (portal) {
+    portal.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  if (sectionId === 'directory') {
+    await loadDirectory();
+  }
+  if (sectionId === 'connections') {
+    await loadConnections();
+  }
+  if (sectionId === 'consultations') {
+    await loadConsultations();
+  }
+  if (sectionId === 'reports') {
+    await loadReports();
+  }
+  if (sectionId === 'community') {
+    await loadPosts();
+  }
+  if (sectionId === 'moderation' && state.lawyerMode) {
+    await loadModerationConsults();
+    await loadModerationReports();
+    await loadModerationPosts();
+    await loadModerationLawyers();
+    if (roleIsAdminOrBoard()) {
+      await loadModerationDeletionRequests();
+      await loadModerationIdentity();
+      await loadModerationMatches();
+      await loadModerationNewsletter();
+      await loadModerationClinic();
+    }
+  }
+}
+
 function roleIsLawyer() {
   return state.profile && ['lawyer', 'admin', 'board'].includes(state.profile.role);
 }
@@ -343,6 +379,11 @@ function setReportStatus(message) {
   if (node) node.textContent = message;
 }
 
+function setCommunityStatus(message) {
+  const node = el('communityStatus');
+  if (node) node.textContent = message;
+}
+
 function setProtectedFormDisabled(formId, disabled) {
   const form = el(formId);
   if (!form) return;
@@ -362,6 +403,7 @@ function syncProtectedPortalUi() {
   const signedIn = !!state.user;
   setProtectedFormDisabled('consultationForm', !signedIn);
   setProtectedFormDisabled('reportForm', !signedIn);
+  setProtectedFormDisabled('communityPostForm', !signedIn);
 
   const consultSubmitBtn = el('consultSubmitBtn');
   if (consultSubmitBtn) {
@@ -373,6 +415,11 @@ function syncProtectedPortalUi() {
     reportSubmitBtn.textContent = signedIn ? 'Submit report' : 'Sign in to submit';
   }
 
+  const postSubmitBtn = el('communityPostForm')?.querySelector('button[type="submit"]');
+  if (postSubmitBtn) {
+    postSubmitBtn.textContent = signedIn ? 'Publish' : 'Sign in to publish';
+  }
+
   setConsultationStatus(
     signedIn
       ? 'Consultations remain visible only to you and the triage team.'
@@ -382,6 +429,11 @@ function syncProtectedPortalUi() {
     signedIn
       ? 'Reports remain visible only to you and authorized reviewers.'
       : 'Sign in from the dashboard to file a private report. Reports remain visible only to you and authorized reviewers.'
+  );
+  setCommunityStatus(
+    signedIn
+      ? 'Read approved posts here. You can also publish, comment, or flag content from this board.'
+      : 'Read approved posts here. Sign in from the dashboard to publish, comment, or flag content.'
   );
 }
 
@@ -585,6 +637,7 @@ function renderDirectory(filter = '') {
   }
   const term = filter.trim().toLowerCase();
   const items = (state.profilesCache || []).filter((profile) => {
+    if (profile.discoverable === false) return false;
     if (!term) return true;
     return [
       profile.displayName,
@@ -630,12 +683,28 @@ function renderDirectory(filter = '') {
       ${profile.bio ? `<p class="muted">${escapeText(profile.bio)}</p>` : ''}
       ${focus}
     `;
+    const currentUserId = state.user?.uid || null;
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'ghost';
-    btn.textContent = profile.uid === state.user.uid ? 'This is you' : 'Request intro';
-    btn.disabled = profile.uid === state.user.uid;
+    const introductionsOpen = currentUserId != null && profile.uid !== currentUserId && profile.matchingOptIn === true;
+    btn.textContent = profile.uid === currentUserId
+      ? 'This is you'
+      : currentUserId == null
+        ? 'Sign in to request intro'
+        : introductionsOpen
+          ? 'Request intro'
+          : 'Introductions closed';
+    btn.disabled = profile.uid === currentUserId || !introductionsOpen;
     btn.addEventListener('click', async () => {
+      if (!currentUserId) {
+        showToast('Sign in from the dashboard to request an introduction.');
+        return;
+      }
+      if (!introductionsOpen) {
+        showToast('This member is not accepting introduction requests right now.');
+        return;
+      }
       const message = window.prompt('Add a short note for the introduction (optional):') || '';
       await createMatchRequest(profile, message);
     });
@@ -759,11 +828,14 @@ async function loadConnections() {
 }
 function setEnvironmentBanner() {
   if (!envBanner) return;
+  const liveTitle = 'BEE COOP';
   const host = window.location.host || '';
+  document.title = liveTitle;
   if (host.includes('staging')) {
     envBanner.textContent = 'STAGING — For testing only';
     envBanner.classList.add('show');
     document.body.classList.add('staging');
+    document.title = `${liveTitle} [STAGING]`;
     const hero = document.getElementById('landing');
     if (hero) hero.classList.add('staging-woodcut');
     const vid = document.getElementById('stagingVideo');
@@ -772,6 +844,11 @@ function setEnvironmentBanner() {
       const base = 'https://www.youtube.com/embed/QWveXdj6oZU';
       vid.src = `${base}?autoplay=1&mute=1&playsinline=1&rel=0`;
     }
+  } else if (host.includes('localhost') || host.startsWith('127.0.0.1')) {
+    envBanner.textContent = 'LOCAL REVIEW — Validate auth, portal tabs, and moderation flows before publish';
+    envBanner.classList.add('show');
+    document.body.classList.remove('staging');
+    document.title = `${liveTitle} [LOCAL]`;
   } else {
     envBanner.classList.remove('show');
     document.body.classList.remove('staging');
@@ -809,8 +886,7 @@ async function ensureProfile(user) {
 async function createNewsletterSubscriber(payload) {
   const safeId = `email-${payload.emailLower.replace(/[^a-z0-9]/gi, '-')}`.toLowerCase();
   const docRef = doc(db, 'newsletterSubscribers', safeId);
-  await setDoc(docRef, payload, { merge: true });
-  return { already: false };
+  await setDoc(docRef, payload);
 }
 
 async function submitNewsletter(event) {
@@ -846,12 +922,18 @@ async function submitNewsletter(event) {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     };
-    const res = await createNewsletterSubscriber(payload);
+    await createNewsletterSubscriber(payload);
     state.lastNewsletterSubmit = Date.now();
     (document.getElementById('newsletterForm') || {}).reset?.();
-    showToast(res.already ? 'You are already subscribed. Updated your preferences.' : 'Subscribed to BEE COOP.');
+    showToast('Subscribed to BEE COOP.');
   } catch (e) {
-    showToast('Could not save newsletter signup right now.');
+    const code = String(e?.code || '').toLowerCase();
+    if (code.includes('permission-denied')) {
+      state.lastNewsletterSubmit = Date.now();
+      showToast('You are already subscribed. This form does not update existing newsletter preferences yet.');
+    } else {
+      showToast('Could not save newsletter signup right now.');
+    }
   } finally {
     state.loading = false;
     setFormLoading('newsletterForm', false);
@@ -1246,11 +1328,22 @@ async function loadReports() {
 }
 
 async function loadPostComments(postId) {
-  const snap = await getDocs(query(collection(db, 'communityComments'), where('postId', '==', postId)));
-  const comments = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
-  const list = comments.filter((x) => !x.deleted);
   const postComments = el(`comments-${postId}`);
   if (!postComments) return;
+  if (!state.user) {
+    postComments.innerHTML = '<p class="muted">Sign in from the dashboard to view or add comments.</p>';
+    return;
+  }
+  let list = [];
+  try {
+    const snap = await getDocs(query(collection(db, 'communityComments'), where('postId', '==', postId)));
+    const comments = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
+    list = comments.filter((x) => !x.deleted);
+  } catch (error) {
+    console.error('Failed to load post comments:', error);
+    postComments.innerHTML = '<p class="muted">Comments are unavailable right now.</p>';
+    return;
+  }
   if (!list.length) {
     postComments.innerHTML = '<p class="muted">No comments yet.</p>';
     return;
@@ -1260,7 +1353,7 @@ async function loadPostComments(postId) {
     const created = toDate(c.createdAt)?.toLocaleString() || 'N/A';
     const cEl = document.createElement('div');
     cEl.className = 'item';
-    const canDelete = c.createdBy === state.user.uid || roleIsLawyer();
+    const canDelete = c.createdBy === state.user?.uid || roleIsLawyer();
     cEl.innerHTML = `<h4>${escapeText(c.authorName || 'Community member')}</h4><p>${escapeText(c.body)}</p><p class="muted">${created}</p>`;
     if (canDelete) {
       const cRow = document.createElement('div');
@@ -1318,10 +1411,23 @@ async function loadPosts() {
     row.className = 'post-meta';
     const flagBtn = document.createElement('button');
     flagBtn.type = 'button';
-    flagBtn.textContent = `Flag (${flags})`;
+    flagBtn.textContent = state.user ? `Flag (${flags})` : 'Sign in to flag';
+    flagBtn.disabled = !state.user;
+    if (!state.user) {
+      flagBtn.title = 'Sign in from the dashboard to flag community posts.';
+    }
     flagBtn.addEventListener('click', async () => {
-      await updateDoc(doc(db, 'communityPosts', p.id), { flags: increment(1), updatedAt: serverTimestamp() });
-      await loadPosts();
+      if (!state.user) {
+        showToast('Sign in from the dashboard to flag community posts.');
+        return;
+      }
+      try {
+        await updateDoc(doc(db, 'communityPosts', p.id), { flags: increment(1), updatedAt: serverTimestamp() });
+        await loadPosts();
+      } catch (error) {
+        console.error('Failed to flag post:', error);
+        showToast('Could not flag this post right now.');
+      }
     });
     row.appendChild(flagBtn);
     if (roleIsLawyer()) {
@@ -1367,16 +1473,19 @@ async function loadPosts() {
     const commentInput = document.createElement('input');
     commentInput.type = 'text';
     commentInput.required = true;
-    commentInput.placeholder = 'Write a comment';
+    commentInput.placeholder = state.user ? 'Write a comment' : 'Sign in from the dashboard to comment';
     commentInput.style.flex = '1';
+    commentInput.disabled = !state.user;
     const cBtn = document.createElement('button');
     cBtn.type = 'submit';
-    cBtn.textContent = 'Post';
+    cBtn.textContent = state.user ? 'Post' : 'Sign in required';
+    cBtn.disabled = !state.user;
     commentForm.appendChild(commentInput);
     commentForm.appendChild(cBtn);
     commentForm.addEventListener('submit', async (ev) => {
       ev.preventDefault();
       if (state.loading) return;
+      if (!state.user) return showToast('Sign in from the dashboard to comment.');
       const body = sanitizeText(commentInput.value, 800);
       if (!body) return;
       state.loading = true;
@@ -1391,6 +1500,9 @@ async function loadPosts() {
         });
         commentInput.value = '';
         await loadPosts();
+      } catch (error) {
+        console.error('Failed to publish comment:', error);
+        showToast('Could not publish comment right now.');
       } finally {
         state.loading = false;
       }
@@ -1472,38 +1584,73 @@ async function loadModerationPosts() {
   clearList(el('moderationPosts'));
   if (!state.lawyerMode) return;
   const snap = await getDocs(query(collection(db, 'communityPosts'), orderBy('createdAt', 'desc')));
-  const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() })).filter((x) => x.flags > 0);
+  const items = snap.docs
+    .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
+    .filter((x) => x.moderationStatus === 'pending' || Number(x.flags || 0) > 0);
   if (!items.length) {
-    el('moderationPosts').innerHTML = '<p class="muted">No flagged posts.</p>';
+    el('moderationPosts').innerHTML = '<p class="muted">No pending or flagged posts.</p>';
     return;
   }
   for (const item of items) {
-    const row = renderItem({
-      title: `Flagged: ${escapeText(item.title || 'Post')}`,
-      body: escapeText(item.body || ''),
-      meta: `flags: ${Number(item.flags || 0)} · by ${escapeText(item.authorName || '')}`,
-      actions: [
-        {
-          label: 'Unflag',
-          onClick: async () => {
-            await updateDoc(doc(db, 'communityPosts', item.id), { flags: 0, updatedAt: serverTimestamp() });
-            await loadModerationPosts();
-            await loadPosts();
-          }
-        },
-        {
-          label: 'Hide',
-          className: 'danger',
-          onClick: async () => {
-            await updateDoc(doc(db, 'communityPosts', item.id), {
-              removed: true,
-              updatedAt: serverTimestamp()
-            });
-            await loadModerationPosts();
-            await loadPosts();
-          }
+    const isPending = item.moderationStatus === 'pending';
+    const flagCount = Number(item.flags || 0);
+    const metaParts = [];
+    if (item.category) metaParts.push(escapeText(item.category));
+    metaParts.push(isPending ? 'pending review' : escapeText(item.moderationStatus || 'approved'));
+    metaParts.push(`flags: ${flagCount}`);
+    if (item.authorName) metaParts.push(`by ${escapeText(item.authorName)}`);
+    const actions = [
+      {
+        label: 'Approve',
+        onClick: async () => {
+          await updateDoc(doc(db, 'communityPosts', item.id), {
+            moderationStatus: 'approved',
+            updatedAt: serverTimestamp()
+          });
+          await loadModerationPosts();
+          await loadPosts();
         }
-      ]
+      },
+      {
+        label: 'Reject',
+        className: 'danger',
+        onClick: async () => {
+          await updateDoc(doc(db, 'communityPosts', item.id), {
+            moderationStatus: 'rejected',
+            updatedAt: serverTimestamp()
+          });
+          await loadModerationPosts();
+          await loadPosts();
+        }
+      }
+    ];
+    if (flagCount > 0) {
+      actions.push({
+        label: 'Unflag',
+        onClick: async () => {
+          await updateDoc(doc(db, 'communityPosts', item.id), { flags: 0, updatedAt: serverTimestamp() });
+          await loadModerationPosts();
+          await loadPosts();
+        }
+      });
+    }
+    actions.push({
+      label: 'Hide',
+      className: 'danger',
+      onClick: async () => {
+        await updateDoc(doc(db, 'communityPosts', item.id), {
+          removed: true,
+          updatedAt: serverTimestamp()
+        });
+        await loadModerationPosts();
+        await loadPosts();
+      }
+    });
+    const row = renderItem({
+      title: `${isPending ? 'Pending' : 'Flagged'}: ${escapeText(item.title || 'Post')}`,
+      body: escapeText(item.body || ''),
+      meta: metaParts.join(' · '),
+      actions
     });
     el('moderationPosts').appendChild(row);
   }
@@ -1867,6 +2014,26 @@ async function deleteCurrentUserContent() {
       await updateDoc(d.ref, archivePayload);
     }
   }
+  const profileRef = doc(db, 'profiles', uid);
+  const profileSnap = await getDoc(profileRef);
+  if (profileSnap.exists()) {
+    await updateDoc(profileRef, {
+      displayName: 'Former member',
+      handle: '',
+      organization: '',
+      location: '',
+      website: '',
+      bio: '',
+      focusAreas: [],
+      avatarUrl: '',
+      avatarPath: '',
+      visibility: 'members',
+      discoverable: false,
+      matchingOptIn: false,
+      offlineAccessRequested: false,
+      updatedAt: serverTimestamp()
+    });
+  }
   await updateDoc(doc(db, 'users', uid), { deleted: true, updatedAt: serverTimestamp() });
 }
 
@@ -1886,26 +2053,14 @@ async function setupEventHandlers() {
 
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
-      showSection(btn.dataset.tab);
-      if (btn.dataset.tab === 'directory') {
-        loadDirectory();
-      }
-      if (btn.dataset.tab === 'connections') {
-        loadConnections();
-      }
-      if (btn.dataset.tab === 'moderation' && state.lawyerMode) {
-        loadModerationConsults();
-        loadModerationReports();
-        loadModerationPosts();
-        loadModerationLawyers();
-        if (roleIsAdminOrBoard()) {
-          loadModerationDeletionRequests();
-          loadModerationIdentity();
-          loadModerationMatches();
-          loadModerationNewsletter();
-          loadModerationClinic();
-        }
-      }
+      void openPortalSection(btn.dataset.tab);
+    });
+  });
+
+  document.querySelectorAll('[data-open-tab]').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      void openPortalSection(link.dataset.openTab);
     });
   });
 
@@ -2109,7 +2264,7 @@ async function setupEventHandlers() {
   el('communityPostForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (state.loading) return;
-    if (!state.user) return showToast('Sign in required');
+    if (!state.user) return showToast('Sign in from the dashboard to publish to the community board.');
     const title = sanitizeText(el('postTitle').value, MAX_SHORT_TEXT);
     const body = sanitizeText(el('postBody').value, MAX_TEXT_LENGTH);
     if (!title || !body) return showToast('Please complete all post fields.');
@@ -2118,16 +2273,21 @@ async function setupEventHandlers() {
       await addDoc(collection(db, 'communityPosts'), {
         title,
         body,
+        category: 'general',
         createdBy: state.user.uid,
         authorName: sanitizeText(state.profile?.displayName || state.user.email, MAX_NAME_LENGTH),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         removed: false,
-        flags: 0
+        flags: 0,
+        moderationStatus: 'pending'
       });
       e.target.reset();
       await loadPosts();
-      showToast('Post published');
+      showToast('Post submitted for moderation');
+    } catch (error) {
+      console.error('Failed to publish post:', error);
+      showToast('Could not publish post right now.');
     } finally {
       state.loading = false;
     }
