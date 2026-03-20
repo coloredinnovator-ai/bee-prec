@@ -11,6 +11,15 @@ import ReactMarkdown from 'react-markdown';
 import { collection, addDoc, query, where, orderBy, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/firebase';
 
+const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024;
+const MAX_PROMPT_LENGTH = 5000;
+const ALLOWED_DOCUMENT_TYPES = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'text/plain',
+]);
+
 export default function NexusAIPage() {
   const { user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
@@ -49,9 +58,33 @@ export default function NexusAIPage() {
     }
   }, [user, fetchHistory]);
 
+  const validateSelectedFile = (candidate: File) => {
+    if (!ALLOWED_DOCUMENT_TYPES.has(candidate.type)) {
+      return 'Unsupported file type. Upload a PDF, PNG, JPG, or TXT file.';
+    }
+
+    if (candidate.size > MAX_DOCUMENT_BYTES) {
+      return 'Document too large. Maximum supported size is 5 MB.';
+    }
+
+    return null;
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
+      const validationError = validateSelectedFile(selectedFile);
+      if (validationError) {
+        setFile(null);
+        setPreviewUrl(null);
+        setAnalysisResult(null);
+        setError(validationError);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+
       setFile(selectedFile);
       setError(null);
       setAnalysisResult(null);
@@ -95,7 +128,18 @@ export default function NexusAIPage() {
 
   const analyzeDocument = async () => {
     if (!file) return;
-    
+
+    if (!user) {
+      setError('Sign in to run secure document analysis.');
+      return;
+    }
+
+    const validationError = validateSelectedFile(file);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     setIsAnalyzing(true);
     setError(null);
     setAnalysisResult(null);
@@ -111,12 +155,18 @@ export default function NexusAIPage() {
       Format the response in clean Markdown.`;
 
       const finalPrompt = customPrompt.trim() ? customPrompt : defaultPrompt;
-      const token = user ? await user.getIdToken() : null;
+      if (finalPrompt.length > MAX_PROMPT_LENGTH) {
+        setError(`Prompt too long. Maximum supported prompt length is ${MAX_PROMPT_LENGTH} characters.`);
+        setIsAnalyzing(false);
+        return;
+      }
+
+      const token = await user.getIdToken();
       const response = await fetch('/api/document-analysis', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           fileName: file.name,
@@ -193,23 +243,42 @@ export default function NexusAIPage() {
           </p>
           <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
             <Sparkles className="h-4 w-4" />
-            Analysis runs through the secured server route. Sign in to retain history.
+            Analysis runs through the secured server route. Sign in is required for analysis and history.
           </div>
         </div>
 
         <div className="bg-white dark:bg-zinc-900 rounded-3xl border border-stone-200 dark:border-zinc-800 shadow-sm p-8 mb-8 transition-colors duration-300">
+          {!user && (
+            <StatusNotice
+              tone="info"
+              message="Sign in before uploading a document. Secure analysis and retained history are available only to authenticated members."
+              className="mb-6"
+            />
+          )}
+
           {!file ? (
             <div 
-              className="border-2 border-dashed border-stone-300 dark:border-zinc-700 rounded-2xl p-12 text-center hover:border-amber-500 dark:hover:border-amber-500 transition-colors cursor-pointer"
-              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed border-stone-300 dark:border-zinc-700 rounded-2xl p-12 text-center transition-colors ${
+                user
+                  ? 'hover:border-amber-500 dark:hover:border-amber-500 cursor-pointer'
+                  : 'opacity-60 cursor-not-allowed'
+              }`}
+              onClick={() => {
+                if (user) {
+                  fileInputRef.current?.click();
+                }
+              }}
             >
               <FileUp className="h-12 w-12 text-stone-400 dark:text-zinc-500 mx-auto mb-4" />
               <h3 className="text-lg font-bold text-stone-900 dark:text-zinc-100 mb-2">Upload Document</h3>
               <p className="text-stone-500 dark:text-zinc-400 text-sm mb-6">
-                Supports PDF, Images (PNG, JPG), and Text files.
+                Supports PDF, PNG, JPG, and TXT files up to 5 MB.
               </p>
-              <button className="px-6 py-2 rounded-full bg-stone-100 dark:bg-zinc-800 text-stone-900 dark:text-zinc-100 font-medium hover:bg-stone-200 dark:hover:bg-zinc-700 transition-colors">
-                Browse Files
+              <button
+                className="px-6 py-2 rounded-full bg-stone-100 dark:bg-zinc-800 text-stone-900 dark:text-zinc-100 font-medium transition-colors disabled:opacity-60"
+                disabled={!user}
+              >
+                {user ? 'Browse Files' : 'Sign In To Upload'}
               </button>
             </div>
           ) : (
@@ -254,9 +323,9 @@ export default function NexusAIPage() {
 
               <button
                 onClick={analyzeDocument}
-                disabled={isAnalyzing}
+                disabled={isAnalyzing || !user}
                 className={`flex items-center gap-2 px-8 py-3 rounded-full font-bold uppercase tracking-tighter transition-all ${
-                  isAnalyzing 
+                  isAnalyzing || !user
                     ? 'bg-stone-200 dark:bg-zinc-800 text-stone-400 dark:text-zinc-600 cursor-not-allowed' 
                     : 'bg-amber-500 text-white hover:bg-amber-600 shadow-md hover:shadow-lg'
                 }`}
@@ -281,7 +350,7 @@ export default function NexusAIPage() {
             ref={fileInputRef} 
             onChange={handleFileChange} 
             className="hidden" 
-            accept="image/*,application/pdf,text/plain"
+            accept="image/png,image/jpeg,application/pdf,text/plain"
           />
         </div>
 
