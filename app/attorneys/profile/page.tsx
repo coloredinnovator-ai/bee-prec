@@ -45,7 +45,6 @@ const emptyService: ServiceDraft = {
 export default function AttorneyProfileEditor() {
   const { user, profile } = useAuth();
   const router = useRouter();
-  const isConsultationTriage = profile?.role === 'admin';
 
   const [attorney, setAttorney] = useState<any>(null);
   const [services, setServices] = useState<any[]>([]);
@@ -71,7 +70,16 @@ export default function AttorneyProfileEditor() {
       return;
     }
 
-    if (profile?.role !== 'lawyer' && profile?.role !== 'admin') {
+    if (!profile) {
+      return;
+    }
+
+    if (profile?.role === 'admin') {
+      router.push('/admin');
+      return;
+    }
+
+    if (profile?.role !== 'lawyer') {
       router.push('/attorneys');
       return;
     }
@@ -110,9 +118,7 @@ export default function AttorneyProfileEditor() {
       }
     );
 
-    const consultationQuery = isConsultationTriage
-      ? collection(db, 'consultations')
-      : query(collection(db, 'consultations'), where('assignedTo', '==', user.uid));
+    const consultationQuery = query(collection(db, 'consultations'), where('assignedTo', '==', user.uid));
 
     const unsubConsultations = onSnapshot(
       consultationQuery,
@@ -136,7 +142,7 @@ export default function AttorneyProfileEditor() {
       unsubServices();
       unsubConsultations();
     };
-  }, [isConsultationTriage, user, profile, router]);
+  }, [user, profile, router]);
 
   const attorneyDisplayName =
     (name || attorney?.name || profile?.displayName || user?.displayName || user?.email || 'Attorney').slice(0, 120);
@@ -145,12 +151,6 @@ export default function AttorneyProfileEditor() {
     (consultation) =>
       consultation.area === 'directAttorney' || consultation.consultationMode === 'direct_attorney'
   );
-
-  const unassignedConsultations = isConsultationTriage
-    ? directAttorneyConsultations.filter(
-        (consultation) => !consultation.assignedTo && consultation.status !== 'closed'
-      )
-    : [];
 
   const myConsultations = directAttorneyConsultations.filter(
     (consultation) => consultation.assignedTo === user?.uid
@@ -243,29 +243,6 @@ export default function AttorneyProfileEditor() {
     }
   };
 
-  const handleClaimConsultation = async (consultation: any) => {
-    if (!user) return;
-
-    try {
-      setConsultationActionId(consultation.id);
-      await updateDoc(doc(db, 'consultations', consultation.id), {
-        assignedTo: user.uid,
-        assignedAttorneyName: attorneyDisplayName,
-        consultationMode: 'direct_attorney',
-        status: 'attorney_review',
-        updatedAt: serverTimestamp(),
-      });
-      setNotice({
-        tone: 'success',
-        message: `Claimed consultation "${consultation.topic}".`,
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `consultations/${consultation.id}`);
-    } finally {
-      setConsultationActionId(null);
-    }
-  };
-
   const handleConsultationResponse = async (consultation: any, closeAfterResponse: boolean) => {
     if (!user) return;
 
@@ -334,7 +311,7 @@ export default function AttorneyProfileEditor() {
     );
   }
 
-  if (!user || (profile?.role !== 'lawyer' && profile?.role !== 'admin')) {
+  if (!user || profile?.role !== 'lawyer') {
     return null;
   }
 
@@ -446,164 +423,107 @@ export default function AttorneyProfileEditor() {
                   Direct Consultation Inbox
                 </h2>
                 <p className="text-sm text-zinc-500 mt-2">
-                  {isConsultationTriage
-                    ? 'Claim direct-attorney requests, respond in-thread, and close matters without leaving the dashboard.'
-                    : 'Review only the matters assigned to you and respond in-thread without leaving the dashboard.'}
+                  Review only the direct-attorney matters assigned to you and respond in-thread without leaving the dashboard.
                 </p>
               </div>
               <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                {unassignedConsultations.length} unassigned · {myConsultations.length} assigned to you
+                {myConsultations.length} assigned to you
               </div>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold uppercase tracking-widest text-zinc-400">
-                  Admin Triage Queue
-                </h3>
-                {!isConsultationTriage && (
-                  <div className="text-center py-10 border border-dashed border-zinc-800 rounded-2xl">
-                    <p className="text-sm text-zinc-500">
-                      Unassigned direct-attorney requests are restricted to admin triage.
-                    </p>
-                  </div>
-                )}
-                {isConsultationTriage && unassignedConsultations.length === 0 && (
-                  <div className="text-center py-10 border border-dashed border-zinc-800 rounded-2xl">
-                    <p className="text-sm text-zinc-500">No unassigned direct-attorney consultations right now.</p>
-                  </div>
-                )}
-                {isConsultationTriage && unassignedConsultations.map((consultation) => (
-                  <div
-                    key={consultation.id}
-                    className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 space-y-4"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h4 className="text-lg font-bold text-zinc-100">{consultation.topic}</h4>
-                        <p className="text-xs text-zinc-500 mt-1">
-                          {consultation.clientName} · {formatTimestamp(consultation.createdAt)}
-                        </p>
-                      </div>
-                      <span className="px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold uppercase tracking-widest text-yellow-500">
-                        {consultation.status || 'open'}
-                      </span>
-                    </div>
-                    <p className="text-sm text-zinc-400 leading-relaxed">{consultation.notes}</p>
-                    {consultation.preferredContact && (
-                      <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">
-                        Preferred contact: {consultation.preferredContact}
+            <div className="space-y-4">
+              {myConsultations.length === 0 && (
+                <div className="text-center py-10 border border-dashed border-zinc-800 rounded-2xl">
+                  <p className="text-sm text-zinc-500">
+                    No direct-attorney consultations are currently assigned to you.
+                  </p>
+                </div>
+              )}
+              {myConsultations.map((consultation) => (
+                <div
+                  key={consultation.id}
+                  className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 space-y-4"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h4 className="text-lg font-bold text-zinc-100">{consultation.topic}</h4>
+                      <p className="text-xs text-zinc-500 mt-1">
+                        {consultation.clientName} · {formatTimestamp(consultation.updatedAt || consultation.createdAt)}
                       </p>
-                    )}
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => handleClaimConsultation(consultation)}
-                        disabled={consultationActionId === consultation.id}
-                        className="px-5 py-2 rounded-xl bg-yellow-500 text-zinc-950 font-bold uppercase tracking-widest hover:bg-yellow-400 disabled:opacity-60 transition-colors"
-                      >
-                        {consultationActionId === consultation.id ? 'Claiming...' : 'Claim Request'}
-                      </button>
                     </div>
+                    <span className="px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold uppercase tracking-widest text-yellow-500">
+                      {consultation.status || 'attorney_review'}
+                    </span>
                   </div>
-                ))}
-              </div>
 
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold uppercase tracking-widest text-zinc-400">
-                  Assigned To You
-                </h3>
-                {myConsultations.length === 0 && (
-                  <div className="text-center py-10 border border-dashed border-zinc-800 rounded-2xl">
-                    <p className="text-sm text-zinc-500">Claim a request from the queue to start the thread.</p>
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                      Client Inquiry
+                    </p>
+                    <p className="text-sm text-zinc-400 leading-relaxed">{consultation.notes}</p>
                   </div>
-                )}
-                {myConsultations.map((consultation) => (
-                  <div
-                    key={consultation.id}
-                    className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 space-y-4"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h4 className="text-lg font-bold text-zinc-100">{consultation.topic}</h4>
-                        <p className="text-xs text-zinc-500 mt-1">
-                          {consultation.clientName} · {formatTimestamp(consultation.updatedAt || consultation.createdAt)}
-                        </p>
-                      </div>
-                      <span className="px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold uppercase tracking-widest text-yellow-500">
-                        {consultation.status || 'attorney_review'}
-                      </span>
-                    </div>
 
+                  {consultation.aiResponse && (
                     <div className="space-y-2">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                        Client Inquiry
+                        Existing AI Guidance
                       </p>
-                      <p className="text-sm text-zinc-400 leading-relaxed">{consultation.notes}</p>
+                      <p className="text-sm text-zinc-400 leading-relaxed whitespace-pre-wrap">
+                        {consultation.aiResponse}
+                      </p>
                     </div>
+                  )}
 
-                    {consultation.aiResponse && (
-                      <div className="space-y-2">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                          Existing AI Guidance
-                        </p>
-                        <p className="text-sm text-zinc-400 leading-relaxed whitespace-pre-wrap">
-                          {consultation.aiResponse}
-                        </p>
-                      </div>
-                    )}
-
-                    <div className="space-y-2">
-                      <label
-                        htmlFor={`consult-response-${consultation.id}`}
-                        className="text-[10px] font-bold uppercase tracking-widest text-zinc-500"
-                      >
-                        Attorney Response
-                      </label>
-                      <textarea
-                        id={`consult-response-${consultation.id}`}
-                        rows={5}
-                        value={consultationDrafts[consultation.id] ?? consultation.attorneyResponse ?? ''}
-                        onChange={(e) =>
-                          setConsultationDrafts((current) => ({
-                            ...current,
-                            [consultation.id]: e.target.value,
-                          }))
-                        }
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:outline-none focus:border-yellow-500 transition-colors resize-y"
-                        placeholder="Write the next legal guidance step, follow-up question, or closing note."
-                      />
-                    </div>
-
-                    <div className="flex flex-wrap justify-end gap-3">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleConsultationStatus(consultation)}
-                        disabled={consultationActionId === consultation.id}
-                        className="px-4 py-2 rounded-xl border border-zinc-700 text-zinc-200 font-bold uppercase tracking-widest hover:border-zinc-500 transition-colors disabled:opacity-60"
-                      >
-                        {consultation.status === 'closed' ? 'Reopen' : 'Close'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleConsultationResponse(consultation, false)}
-                        disabled={consultationActionId === consultation.id}
-                        className="px-4 py-2 rounded-xl border border-yellow-500/40 text-yellow-400 font-bold uppercase tracking-widest hover:border-yellow-400 transition-colors disabled:opacity-60"
-                      >
-                        Save Response
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleConsultationResponse(consultation, true)}
-                        disabled={consultationActionId === consultation.id}
-                        className="px-4 py-2 rounded-xl bg-yellow-500 text-zinc-950 font-bold uppercase tracking-widest hover:bg-yellow-400 transition-colors disabled:opacity-60"
-                      >
-                        Send & Close
-                      </button>
-                    </div>
+                  <div className="space-y-2">
+                    <label
+                      htmlFor={`consult-response-${consultation.id}`}
+                      className="text-[10px] font-bold uppercase tracking-widest text-zinc-500"
+                    >
+                      Attorney Response
+                    </label>
+                    <textarea
+                      id={`consult-response-${consultation.id}`}
+                      rows={5}
+                      value={consultationDrafts[consultation.id] ?? consultation.attorneyResponse ?? ''}
+                      onChange={(e) =>
+                        setConsultationDrafts((current) => ({
+                          ...current,
+                          [consultation.id]: e.target.value,
+                        }))
+                      }
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:outline-none focus:border-yellow-500 transition-colors resize-y"
+                      placeholder="Write the next legal guidance step, follow-up question, or closing note."
+                    />
                   </div>
-                ))}
-              </div>
+
+                  <div className="flex flex-wrap justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleConsultationStatus(consultation)}
+                      disabled={consultationActionId === consultation.id}
+                      className="px-4 py-2 rounded-xl border border-zinc-700 text-zinc-200 font-bold uppercase tracking-widest hover:border-zinc-500 transition-colors disabled:opacity-60"
+                    >
+                      {consultation.status === 'closed' ? 'Reopen' : 'Close'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleConsultationResponse(consultation, false)}
+                      disabled={consultationActionId === consultation.id}
+                      className="px-4 py-2 rounded-xl border border-yellow-500/40 text-yellow-400 font-bold uppercase tracking-widest hover:border-yellow-400 transition-colors disabled:opacity-60"
+                    >
+                      Save Response
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleConsultationResponse(consultation, true)}
+                      disabled={consultationActionId === consultation.id}
+                      className="px-4 py-2 rounded-xl bg-yellow-500 text-zinc-950 font-bold uppercase tracking-widest hover:bg-yellow-400 transition-colors disabled:opacity-60"
+                    >
+                      Send & Close
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
 

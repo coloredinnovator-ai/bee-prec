@@ -42,39 +42,34 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const userData = userDoc.data();
       const publicProfileData = publicProfileDoc.exists() ? publicProfileDoc.data() : {};
       setProfile({
-        ...userData,
         ...publicProfileData,
-        role: userData.role,
-        email: userData.email,
-        requestedRole: userData.requestedRole,
-        requiresApproval: userData.requiresApproval,
-        lawyerCodeUsed: userData.lawyerCodeUsed,
-        approvedBy: userData.approvedBy,
-        approvedAt: userData.approvedAt,
-        rejectedBy: userData.rejectedBy,
-        rejectedAt: userData.rejectedAt,
-        deleted: userData.deleted,
+        uid: currentUser.uid,
+        displayName: publicProfileData.displayName ?? userData.displayName ?? currentUser.displayName ?? 'Anonymous Bee',
+        avatarUrl: publicProfileData.avatarUrl ?? userData.avatarUrl ?? currentUser.photoURL ?? '',
+        email: userData.email ?? currentUser.email,
+        role: userData.role ?? 'member',
+        notificationsEnabled: userData.notificationsEnabled ?? false,
+        deleted: Boolean(userData.deleted),
+        photoURL: currentUser.photoURL,
+        createdAt: publicProfileData.createdAt ?? userData.createdAt,
+        updatedAt: publicProfileData.updatedAt ?? userData.updatedAt,
       });
       return;
     }
 
-    const newProfile = {
+    const newProfile: Record<string, any> = {
       uid: currentUser.uid,
       displayName: currentUser.displayName || 'Anonymous Bee',
-      email: currentUser.email,
-      photoURL: currentUser.photoURL,
+      email: currentUser.email || '',
       role: 'member',
-      requestedRole: 'member',
-      requiresApproval: false,
-      lawyerCodeUsed: null,
-      approvedBy: null,
-      approvedAt: null,
-      rejectedBy: null,
-      rejectedAt: null,
+      notificationsEnabled: false,
       deleted: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    if (currentUser.photoURL) {
+      newProfile.avatarUrl = currentUser.photoURL;
+    }
     const firestoreProfile = {
       ...newProfile,
       createdAt: serverTimestamp(),
@@ -82,8 +77,10 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     await setDoc(userDocRef, firestoreProfile);
     setProfile({
-      ...newProfile,
       ...(publicProfileDoc.exists() ? publicProfileDoc.data() : {}),
+      ...newProfile,
+      avatarUrl: (publicProfileDoc.exists() ? publicProfileDoc.data().avatarUrl : undefined) ?? newProfile.avatarUrl ?? '',
+      photoURL: currentUser.photoURL,
       createdAt: { toDate: () => new Date() },
       updatedAt: { toDate: () => new Date() },
     });

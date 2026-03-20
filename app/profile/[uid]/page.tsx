@@ -14,7 +14,6 @@ type PublicProfile = {
   displayName?: string;
   bio?: string;
   avatarUrl?: string;
-  photoURL?: string;
   role?: string;
   location?: string;
   organization?: string;
@@ -36,23 +35,19 @@ export default function PublicProfilePage() {
       }
 
       try {
-        const [userSnap, profileSnap] = await Promise.all([
-          getDoc(doc(db, 'users', uid)),
-          getDoc(doc(db, 'profiles', uid)),
-        ]);
+        const profileSnap = await getDoc(doc(db, 'profiles', uid));
 
         if (!profileSnap.exists() || profileSnap.data().visibility !== 'public') {
           setProfile(null);
           return;
         }
 
-        const merged = {
+        const publicProfile = {
           uid,
-          ...(userSnap.exists() ? userSnap.data() : {}),
-          ...(profileSnap.exists() ? profileSnap.data() : {}),
+          ...profileSnap.data(),
         } as PublicProfile;
 
-        setProfile(merged);
+        setProfile(publicProfile);
       } catch (error) {
         console.error('Failed to load public profile:', error);
         setProfile(null);
@@ -97,7 +92,7 @@ export default function PublicProfilePage() {
   }
 
   const displayName = profile.displayName || 'B-PREC Member';
-  const avatar = profile.avatarUrl || profile.photoURL;
+  const avatar = profile.avatarUrl;
 
   return (
     <main className="min-h-screen bg-stone-50 text-stone-900 dark:bg-zinc-950 dark:text-zinc-100 transition-colors duration-300">

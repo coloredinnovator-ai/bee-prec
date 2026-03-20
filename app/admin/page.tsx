@@ -42,6 +42,7 @@ export default function AdminPage() {
   const { user, profile, loading } = useAuth();
   const [activeTab, setActiveTab] = useState<'users' | 'posts' | 'resources' | 'requests' | 'consultations' | 'reports'>('users');
   const canManageUserRoles = profile?.role === 'admin';
+  const canManageConsultations = profile?.role === 'admin';
   
   // Users State
   const [users, setUsers] = useState<any[]>([]);
@@ -106,13 +107,16 @@ export default function AdminPage() {
       const requestsSnapshot = await getDocs(requestsQuery);
       setPendingRequests(requestsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-      // Fetch Active Consultations
-      const consultationsSnapshot = await getDocs(collection(db, 'consultations'));
-      const consultationItems = consultationsSnapshot.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() }))
-        .filter((item: any) => !item.deleted && item.status !== 'closed')
-        .sort((left: any, right: any) => getComparableTime(right) - getComparableTime(left));
-      setPendingConsultations(consultationItems);
+      if (canManageConsultations) {
+        const consultationsSnapshot = await getDocs(collection(db, 'consultations'));
+        const consultationItems = consultationsSnapshot.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .filter((item: any) => !item.deleted && item.status !== 'closed')
+          .sort((left: any, right: any) => getComparableTime(right) - getComparableTime(left));
+        setPendingConsultations(consultationItems);
+      } else {
+        setPendingConsultations([]);
+      }
 
       // Fetch Open Incident Reports
       const reportsSnapshot = await getDocs(collection(db, 'incidentReports'));
@@ -127,7 +131,7 @@ export default function AdminPage() {
     } finally {
       setLoadingModeration(false);
     }
-  }, [getComparableTime, showToast]);
+  }, [canManageConsultations, getComparableTime, showToast]);
 
   useEffect(() => {
     if (profile?.role === 'admin' || profile?.role === 'board') {
@@ -420,22 +424,24 @@ export default function AdminPage() {
               </span>
             )}
           </button>
-          <button
-            onClick={() => setActiveTab('consultations')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-              activeTab === 'consultations'
-                ? 'bg-white dark:bg-zinc-800 text-stone-900 dark:text-zinc-100 shadow-sm'
-                : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-200 hover:bg-stone-200 dark:hover:bg-zinc-800/50'
-            }`}
-          >
-            <MessageSquare className="h-4 w-4" />
-            Consultations
-            {pendingConsultations.length > 0 && (
-              <span className="ml-2 bg-amber-500 text-amber-950 text-xs py-0.5 px-2 rounded-full font-bold">
-                {pendingConsultations.length}
-              </span>
-            )}
-          </button>
+          {canManageConsultations && (
+            <button
+              onClick={() => setActiveTab('consultations')}
+              className={`flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                activeTab === 'consultations'
+                  ? 'bg-white dark:bg-zinc-800 text-stone-900 dark:text-zinc-100 shadow-sm'
+                  : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-200 hover:bg-stone-200 dark:hover:bg-zinc-800/50'
+              }`}
+            >
+              <MessageSquare className="h-4 w-4" />
+              Consultations
+              {pendingConsultations.length > 0 && (
+                <span className="ml-2 bg-amber-500 text-amber-950 text-xs py-0.5 px-2 rounded-full font-bold">
+                  {pendingConsultations.length}
+                </span>
+              )}
+            </button>
+          )}
           <button
             onClick={() => setActiveTab('reports')}
             className={`flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
@@ -770,7 +776,7 @@ export default function AdminPage() {
           )}
 
           {/* CONSULTATIONS TAB */}
-          {activeTab === 'consultations' && (
+          {activeTab === 'consultations' && canManageConsultations && (
             <div className="p-6">
               {pendingConsultations.length === 0 ? (
                 <div className="text-center py-12">

@@ -66,9 +66,14 @@ export default function ProfilePage() {
 
   const handleSave = async () => {
     try {
+      const normalizedDisplayName =
+        editedProfile.displayName.trim()
+        || profile?.displayName
+        || user.displayName
+        || 'Anonymous Bee';
       const normalizedFocusAreas = editedProfile.focusAreas.slice(0, 8);
-      const sharedProfileFields = {
-        displayName: editedProfile.displayName.trim(),
+      const publicProfileFields = {
+        displayName: normalizedDisplayName,
         bio: editedProfile.bio.trim(),
         avatarUrl: editedProfile.avatarUrl.trim(),
         organization: editedProfile.organization.trim(),
@@ -78,7 +83,8 @@ export default function ProfilePage() {
       };
 
       await updateDoc(doc(db, 'users', user.uid), {
-        ...sharedProfileFields,
+        displayName: normalizedDisplayName,
+        avatarUrl: publicProfileFields.avatarUrl,
         notificationsEnabled: editedProfile.notificationsEnabled,
         updatedAt: serverTimestamp()
       });
@@ -87,7 +93,7 @@ export default function ProfilePage() {
       const existingPublicProfile = await getDoc(publicProfileRef);
       const publicProfilePayload: Record<string, any> = {
         uid: user.uid,
-        ...sharedProfileFields,
+        ...publicProfileFields,
         visibility: editedProfile.visibility,
         offlineAccessRequested: editedProfile.offlineAccessRequested,
         matchingOptIn: editedProfile.matchingOptIn,

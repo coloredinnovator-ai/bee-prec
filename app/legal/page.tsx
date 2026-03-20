@@ -64,6 +64,10 @@ function LegalPageContent() {
     message: string;
   } | null>(null);
   const [attorneyLookupState, setAttorneyLookupState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
+  const loweredSubmissionNotice = submissionNotice?.message?.toLowerCase() || '';
+  const noticeNeedsReconnect = Boolean(
+    loweredSubmissionNotice.includes('sign in') || loweredSubmissionNotice.includes('session')
+  );
 
   useEffect(() => {
     if (attorneyId) {
@@ -158,20 +162,27 @@ function LegalPageContent() {
     try {
       let aiText = '';
       if (!selectedAttorney) {
-        const token = await user.getIdToken();
-        const aiResponse = await fetch('/api/legal-assist', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            subject: trimmedSubject,
-            message: trimmedMessage,
-          }),
-        });
+        const requestLegalAssist = async (forceRefresh = false) => {
+          const token = await user.getIdToken(forceRefresh);
+          const aiResponse = await fetch('/api/legal-assist', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              subject: trimmedSubject,
+              message: trimmedMessage,
+            }),
+          });
+          const aiPayload = await aiResponse.json();
+          return { aiResponse, aiPayload };
+        };
 
-        const aiPayload = await aiResponse.json();
+        let { aiResponse, aiPayload } = await requestLegalAssist();
+        if (aiResponse.status === 401) {
+          ({ aiResponse, aiPayload } = await requestLegalAssist(true));
+        }
 
         if (!aiResponse.ok) {
           setSubmissionNotice(buildLegalAssistNotice(aiResponse.status, aiPayload));
@@ -256,11 +267,21 @@ function LegalPageContent() {
 
             <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-xl">
               {submissionNotice && (
-                <StatusNotice
-                  tone={submissionNotice.tone}
-                  message={submissionNotice.message}
-                  className="mb-6"
-                />
+                <div className="mb-6 space-y-3">
+                  <StatusNotice
+                    tone={submissionNotice.tone}
+                    message={submissionNotice.message}
+                  />
+                  {noticeNeedsReconnect && (
+                    <button
+                      type="button"
+                      onClick={promptSignIn}
+                      className="w-full rounded-xl border border-zinc-700 px-4 py-3 text-sm font-bold uppercase tracking-widest text-zinc-100 transition-colors hover:border-yellow-500 hover:text-yellow-400"
+                    >
+                      Reconnect Account
+                    </button>
+                  )}
+                </div>
               )}
 
               {attorneyLookupState === 'unavailable' && attorneyId && (

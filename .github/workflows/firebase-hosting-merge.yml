@@ -21,29 +21,51 @@ on:
       - "firestore.rules"
       - "storage.rules"
   workflow_dispatch:
-    inputs:
-      branch:
-        description: "Branch/environment to deploy"
-        required: true
-        default: "main"
-        type: choice
-        options:
-          - main
-          - MAROON-staging
 
 jobs:
-  deploy-main:
+  resolve-release-context:
+    runs-on: ubuntu-latest
+    outputs:
+      environment_name: ${{ steps.resolve.outputs.environment_name }}
+      environment_url: ${{ steps.resolve.outputs.environment_url }}
+      hosting_target: ${{ steps.resolve.outputs.hosting_target }}
+    steps:
+      - name: Resolve deployable ref
+        id: resolve
+        run: |
+          set -euo pipefail
+          case "${GITHUB_REF_NAME}" in
+            main)
+              echo "environment_name=production" >> "${GITHUB_OUTPUT}"
+              echo "environment_url=https://bee-prec-site.web.app" >> "${GITHUB_OUTPUT}"
+              echo "hosting_target=bee-prec-site" >> "${GITHUB_OUTPUT}"
+              ;;
+            MAROON-staging)
+              echo "environment_name=staging" >> "${GITHUB_OUTPUT}"
+              echo "environment_url=https://bee-prec-site-staging.web.app" >> "${GITHUB_OUTPUT}"
+              echo "hosting_target=bee-prec-site-staging" >> "${GITHUB_OUTPUT}"
+              ;;
+            *)
+              echo "Manual deploys are only supported from main or MAROON-staging. Current ref: ${GITHUB_REF_NAME}" >&2
+              exit 1
+              ;;
+          esac
+
+  deploy:
+    needs: resolve-release-context
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.branch == 'main')
+    if: needs.resolve-release-context.result == 'success'
     defaults:
       run:
         working-directory: .
     environment:
-      name: production
-      url: https://bee-prec-site.web.app
+      name: ${{ needs.resolve-release-context.outputs.environment_name }}
+      url: ${{ needs.resolve-release-context.outputs.environment_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -51,7 +73,7 @@ jobs:
         run: test -f public/index.html && test -f public/site.js
 
       - name: Authenticate to GCP for rules deploy
-        id: deploy-rules-auth-main
+        id: deploy-rules-auth
         uses: google-github-actions/auth@v2
         with:
           credentials_json: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_NANNY_TECH }}'
@@ -59,9 +81,8 @@ jobs:
       - name: Deploy backend security rules before hosting
         run: |
           set -euo pipefail
-          export GOOGLE_APPLICATION_CREDENTIALS="${{ steps.deploy-rules-auth-main.outputs.credentials_file_path }}"
-          npm install -g firebase-tools
-          npx firebase-tools deploy --project nanny-tech --only firestore:rules,storage --non-interactive
+          export GOOGLE_APPLICATION_CREDENTIALS="${{ steps.deploy-rules-auth.outputs.credentials_file_path }}"
+          npx firebase-tools@15.0.0 deploy --project nanny-tech --only firestore:rules,storage --non-interactive
 
       - name: Deploy Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
@@ -70,44 +91,4 @@ jobs:
           firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_NANNY_TECH }}'
           channelId: live
           projectId: nanny-tech
-          target: bee-prec-site
-
-  deploy-staging:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/MAROON-staging') || (github.event_name == 'workflow_dispatch' && github.event.inputs.branch == 'MAROON-staging')
-    defaults:
-      run:
-        working-directory: .
-    environment:
-      name: staging
-      url: https://bee-prec-site-staging.web.app
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: Validate static web assets
-        run: test -f public/index.html && test -f public/site.js
-
-      - name: Authenticate to GCP for rules deploy
-        id: deploy-rules-auth-staging
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_NANNY_TECH }}'
-
-      - name: Deploy backend security rules before hosting
-        run: |
-          set -euo pipefail
-          export GOOGLE_APPLICATION_CREDENTIALS="${{ steps.deploy-rules-auth-staging.outputs.credentials_file_path }}"
-          npm install -g firebase-tools
-          npx firebase-tools deploy --project nanny-tech --only firestore:rules,storage --non-interactive
-
-      - name: Deploy Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_NANNY_TECH }}'
-          channelId: live
-          projectId: nanny-tech
-          target: bee-prec-site-staging
+          target: ${{ needs.resolve-release-context.outputs.hosting_target }}

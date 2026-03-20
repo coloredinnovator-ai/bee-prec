@@ -73,6 +73,10 @@ export default function NexusAIPage() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const loweredNotice = notice?.message?.toLowerCase() || '';
+  const noticeNeedsReconnect = Boolean(
+    loweredNotice.includes('sign in') || loweredNotice.includes('session')
+  );
 
   const fetchHistory = useCallback(async () => {
     if (!user) return;
@@ -221,22 +225,29 @@ export default function NexusAIPage() {
         return;
       }
 
-      const token = await user.getIdToken();
-      const response = await fetch('/api/document-analysis', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          fileName: file.name,
-          mimeType: file.type,
-          base64Data,
-          prompt: finalPrompt,
-        }),
-      });
+      const requestDocumentAnalysis = async (forceRefresh = false) => {
+        const token = await user.getIdToken(forceRefresh);
+        const response = await fetch('/api/document-analysis', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            fileName: file.name,
+            mimeType: file.type,
+            base64Data,
+            prompt: finalPrompt,
+          }),
+        });
+        const payload = await response.json();
+        return { response, payload };
+      };
 
-      const payload = await response.json();
+      let { response, payload } = await requestDocumentAnalysis();
+      if (response.status === 401) {
+        ({ response, payload } = await requestDocumentAnalysis(true));
+      }
 
       if (!response.ok) {
         setNotice(buildDocumentNotice(response.status, payload));
@@ -397,10 +408,14 @@ export default function NexusAIPage() {
                 <textarea
                   value={customPrompt}
                   onChange={(e) => setCustomPrompt(e.target.value)}
+                  maxLength={MAX_PROMPT_LENGTH}
                   placeholder="e.g., Focus specifically on intellectual property clauses..."
                   className="w-full px-4 py-3 rounded-xl border border-stone-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-stone-900 dark:text-zinc-100 focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all resize-none h-24"
                   disabled={isAnalyzing}
                 />
+                <p className="mt-2 text-right text-[11px] font-medium text-stone-500 dark:text-zinc-500">
+                  {customPrompt.length}/{MAX_PROMPT_LENGTH}
+                </p>
               </div>
 
               <button
@@ -442,9 +457,18 @@ export default function NexusAIPage() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="mb-8"
+              className="mb-8 space-y-3"
             >
               <StatusNotice tone={notice.tone} message={notice.message} />
+              {noticeNeedsReconnect && (
+                <button
+                  type="button"
+                  onClick={promptSignIn}
+                  className="inline-flex items-center gap-2 rounded-full border border-amber-300 px-5 py-2 text-sm font-bold uppercase tracking-widest text-amber-700 transition-colors hover:border-amber-500 hover:text-amber-600 dark:border-amber-500/30 dark:text-amber-300 dark:hover:border-amber-400 dark:hover:text-amber-200"
+                >
+                  Reconnect Account
+                </button>
+              )}
             </motion.div>
           )}
 
