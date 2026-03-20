@@ -7,6 +7,8 @@ Client repository for the BEE COOP platform. This repo currently contains two su
 
 The Next.js app and the static site share the same repo, but they are not the same deploy target. The Firebase workflows in this repo currently publish the `public/` site, while the Next app is validated locally and in CI. Treat `public/` as the production public surface until a written cutover changes the workflows. Treat `app/` as the authenticated member and operator surface under active completion.
 
+The homepage visual language is intentionally kept in parity across both surfaces. That visual parity does **not** change the runtime contract by itself. A matching homepage in `app/` is design alignment only until the GitHub workflows and deployment docs explicitly move production traffic to the Next.js runtime.
+
 ## Local development
 
 - Prerequisites: Node.js
@@ -38,8 +40,9 @@ GitHub Actions is the primary deployment path for the static site.
 5. The Next.js app is still part of the repo, but its runtime is not the current Firebase Hosting output.
 6. Treat the static Firebase site as the live public/member intake surface until a separate written cutover moves traffic to the Next.js runtime.
 7. Do not assume `app/` changes are live in production unless the release path is explicitly changed in GitHub workflows and deployment docs.
-8. `./scripts/deploy_bee_prec_gcp.sh` follows the same contract locally: it deploys shared rules before Hosting and enforces branch-to-environment alignment unless `ALLOW_BRANCH_BYPASS=1` is explicitly set.
-9. `./scripts/deploy_bee_prec_all_gcp.sh` is an emergency-only escape hatch and is disabled by default unless `ALLOW_MULTI_ENV_DEPLOY=1` is explicitly set.
+8. Visual parity between `public/` and `app/` is allowed and encouraged; runtime parity is **not** implied by matching UI alone.
+9. `./scripts/deploy_bee_prec_gcp.sh` follows the same contract locally: it deploys shared rules before Hosting and enforces branch-to-environment alignment unless `ALLOW_BRANCH_BYPASS=1` is explicitly set.
+10. `./scripts/deploy_bee_prec_all_gcp.sh` is an emergency-only escape hatch and is disabled by default unless `ALLOW_MULTI_ENV_DEPLOY=1` is explicitly set.
 
 ## Staging parity
 

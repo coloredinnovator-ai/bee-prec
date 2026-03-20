@@ -21,19 +21,21 @@
     <div class="noise"></div>
     <div id="envBanner" class="env-banner" role="status" aria-live="polite"></div>
 
-    <header class="hero" id="landing">
+    <header class="hero hero--google" id="landing">
       <div class="motif-frame staging-only" aria-hidden="true"></div>
       <div class="hero__nav">
         <div class="brand">
           <span class="bee-beacon" aria-hidden="true"></span>
-          <span class="bee">BEE</span><span class="coop"> COOP</span>
+          <div class="brand__copy">
+            <span class="bee">BEE</span><span class="coop"> COOP</span>
+            <small class="brand__tag">co-op clinic + governed member operations</small>
+          </div>
         </div>
-        <nav class="nav-links">
+        <nav class="nav-links" aria-label="Primary">
+          <a href="#agents">System</a>
           <a href="#clinic">Clinic</a>
-          <a href="#agents">Agents</a>
           <a href="#library">Library</a>
           <a href="#news">News</a>
-          <a href="#guide">Basics</a>
           <a href="#community-section">Forum</a>
           <a href="#portal">Portal</a>
         </nav>
@@ -44,148 +46,191 @@
       </div>
       <div class="hero__content">
         <div class="hero__copy">
-          <p class="eyebrow">People Powered Development</p>
-          <h1>BEE COOP</h1>
-          <p class="lede">A bold cooperative clinic, forum, and reporting line for people building and protecting community-owned businesses.</p>
+          <p class="eyebrow">Product-grade cooperative infrastructure</p>
+          <h1>Legal intake, community safety, and member operations in one governed system.</h1>
+          <p class="lede">
+            BEE COOP gives cooperative founders, members, attorneys, and admins a single operating surface for
+            clinic requests, harm reporting, moderated community posts, shared resources, research, and secure review.
+          </p>
           <div class="hero__actions">
-            <a class="cta primary" href="#clinic">Join the clinic</a>
-            <a class="cta ghost" href="#newsletter">Get updates</a>
-            <a class="cta text" href="#guide">Learn co-ops</a>
+            <a class="cta primary" href="#clinic">Open clinic intake</a>
+            <a class="cta ghost" href="#portal" data-open-tab="dashboard">Member sign-in</a>
+            <a class="cta text" href="#guide">Explore the reference guide</a>
           </div>
           <div class="hero__meta">
-            <span>Black · Red · Yellow · Green</span>
-            <span>Forum · Library · News</span>
-            <span>Trusted moderation · Secure storage</span>
+            <span>Public front door</span>
+            <span>Member workspace</span>
+            <span>Attorney routing</span>
+            <span>Auditable moderation</span>
+          </div>
+          <div class="hero-proof">
+            <article class="hero-proof__item">
+              <strong>Clear product story</strong>
+              <span>One platform, separate lanes for public trust, member work, and staff operations.</span>
+            </article>
+            <article class="hero-proof__item">
+              <strong>Protected workflows</strong>
+              <span>Consultations, reports, identity review, and moderation are governed with tighter rules.</span>
+            </article>
+            <article class="hero-proof__item">
+              <strong>Real operating depth</strong>
+              <span>Forum, library, resources, map, Nexus AI, and legal-assist services are already wired in.</span>
+            </article>
           </div>
         </div>
-        <div class="hero__bee">
-          <div class="bee-badge">
-            <div class="bee-wing left"></div>
-            <div class="bee-body">
-              <div class="bee-stripe dark"></div>
-              <div class="bee-stripe light"></div>
-              <div class="bee-stripe dark"></div>
+        <div class="hero__visual">
+          <div class="hero-shell card">
+            <div class="hero-shell__header">
+              <div>
+                <p class="eyebrow">Live operating preview</p>
+                <h2>Public site with governed internal lanes</h2>
+              </div>
+              <span class="agent-chip live">Production-ready</span>
             </div>
-            <div class="bee-wing right"></div>
+            <div class="hero-shell__tabs" aria-hidden="true">
+              <span>Public</span>
+              <span>Member</span>
+              <span>Attorney</span>
+              <span>Admin</span>
+            </div>
+            <div class="hero-shell__grid">
+              <article class="hero-shell__card hero-shell__card--wide">
+                <div class="hero__bee">
+                  <div class="bee-badge">
+                    <div class="bee-wing left"></div>
+                    <div class="bee-body">
+                      <div class="bee-stripe dark"></div>
+                      <div class="bee-stripe light"></div>
+                      <div class="bee-stripe dark"></div>
+                    </div>
+                    <div class="bee-wing right"></div>
+                  </div>
+                </div>
+                <div>
+                  <strong>Floating operator mark</strong>
+                  <p class="muted">A cleaner visual shell inspired by the AI Studio/App Hosting lane, merged into the live public surface.</p>
+                </div>
+              </article>
+              <article class="hero-shell__card">
+                <strong>Clinic intake</strong>
+                <p class="muted">Structured requests for formation, governance, funding, and legal support.</p>
+              </article>
+              <article class="hero-shell__card">
+                <strong>Protected reporting</strong>
+                <p class="muted">Secure incident intake with auditable handling and restricted reviewer access.</p>
+              </article>
+              <article class="hero-shell__card">
+                <strong>Member tools</strong>
+                <p class="muted">Profiles, directory, introductions, community publishing, and private history.</p>
+              </article>
+              <article class="hero-shell__card">
+                <strong>Shared intelligence</strong>
+                <p class="muted">Library search, co-op news, resources, map visibility, and Nexus AI workflows.</p>
+              </article>
+            </div>
           </div>
-          <p class="bee-tagline">Bumblebee mascot for resilient, worker-owned futures.</p>
         </div>
       </div>
     </header>
 
-    <section class="value-grid" aria-labelledby="values-title">
-      <div class="grid-card">
-        <h3 id="values-title">Community & Safety</h3>
-        <p>Report harms, get legal eyes, and protect members with transparent moderation.</p>
+    <section class="signal-strip" aria-label="Trust and readiness">
+      <article class="signal-card">
+        <span class="signal-card__label">Surface</span>
+        <strong>Live public front door</strong>
+        <p>Purpose-built landing page first, deeper dashboard second.</p>
+      </article>
+      <article class="signal-card">
+        <span class="signal-card__label">Governance</span>
+        <strong>Role-aware portal lanes</strong>
+        <p>Members, attorneys, admins, and moderators use separate paths.</p>
+      </article>
+      <article class="signal-card">
+        <span class="signal-card__label">Security</span>
+        <strong>Hardened write surface</strong>
+        <p>Protected forms, moderated content, and server-enforced AI analysis.</p>
+      </article>
+      <article class="signal-card">
+        <span class="signal-card__label">Proof</span>
+        <strong>GitHub-visible release spine</strong>
+        <p>Rules, hosting, checks, and parity now move together through CI.</p>
+      </article>
+    </section>
+
+    <section class="section-block overview-section" id="agents">
+      <div class="section-header">
+        <div>
+          <p class="eyebrow">Operating system</p>
+          <h2>A cleaner front door without losing operational depth</h2>
+          <p class="section-subcopy">
+            The public site now leads with what the product is, why it matters, and how work flows through the system.
+            The underlying portal, moderation, clinic, and community features remain intact.
+          </p>
+        </div>
+        <a class="cta text" href="#portal">Jump to the workspace</a>
       </div>
-      <div class="grid-card">
-        <h3>Clinic</h3>
-        <p>Book time with co-op counsel to launch or restructure your cooperative.</p>
-      </div>
-      <div class="grid-card">
-        <h3>Learning</h3>
-        <p>Reference guide to co-op identity, principles, books, and global case studies.</p>
+      <div class="overview-grid">
+        <article class="overview-card card">
+          <p class="eyebrow">01</p>
+          <h3>Public trust lane</h3>
+          <p>Give visitors a clear narrative, credible feature map, and immediate actions without dumping them into internal tooling.</p>
+        </article>
+        <article class="overview-card card">
+          <p class="eyebrow">02</p>
+          <h3>Member workspace</h3>
+          <p>Profiles, intros, consultations, reports, and public posting live in a sign-in-first portal with scoped visibility.</p>
+        </article>
+        <article class="overview-card card">
+          <p class="eyebrow">03</p>
+          <h3>Attorney + admin review</h3>
+          <p>Private requests route to the right people while moderation and verification stay reviewable and auditable.</p>
+        </article>
+        <article class="overview-card card">
+          <p class="eyebrow">04</p>
+          <h3>Shared intelligence layer</h3>
+          <p>Research library, co-op news, map context, resources, and AI-assisted legal workflows all sit under one brand.</p>
+        </article>
       </div>
     </section>
 
-    <section class="section-block agent-section" id="agents">
+    <section class="section-block section-block--surface">
       <div class="section-header">
         <div>
-          <p class="eyebrow">Agent Studio</p>
-          <h2>Specialized agents for co-op action</h2>
-          <p>A calm, guided workspace for research, intake, and community care. You stay in control of every action.</p>
+          <p class="eyebrow">Feature map</p>
+          <h2>Everything already in the app, tightened into one story</h2>
+          <p class="section-subcopy">The platform is not a placeholder. These are real routes, real forms, and real operational surfaces that now read as one product.</p>
         </div>
-        <a class="cta text" href="#clinic">Start a clinic intake</a>
       </div>
-      <div class="agent-crest" aria-hidden="true"></div>
-      <div class="agent-console">
-        <aside class="agent-roster card">
-          <h3>Specialized agents</h3>
-          <div class="agent-item">
-            <span class="agent-status live" aria-hidden="true"></span>
-            <div>
-              <strong>Clinic Intake Agent</strong>
-              <p class="muted">Turns your notes into a structured intake packet and next steps.</p>
-            </div>
-            <span class="agent-chip">Ready</span>
-          </div>
-          <div class="agent-item">
-            <span class="agent-status warm" aria-hidden="true"></span>
-            <div>
-              <strong>Co-op Law Researcher</strong>
-              <p class="muted">Finds statutes, bylaws, and governance models by region.</p>
-            </div>
-            <span class="agent-chip">In focus</span>
-          </div>
-          <div class="agent-item">
-            <span class="agent-status cool" aria-hidden="true"></span>
-            <div>
-              <strong>Community Care Agent</strong>
-              <p class="muted">Flags harm reports and suggests support-centered responses.</p>
-            </div>
-            <span class="agent-chip">On watch</span>
-          </div>
-          <div class="agent-item">
-            <span class="agent-status live" aria-hidden="true"></span>
-            <div>
-              <strong>News & Library Agent</strong>
-              <p class="muted">Curates weekly co-op news and research library additions.</p>
-            </div>
-            <span class="agent-chip">Queued</span>
-          </div>
-          <div class="agent-item">
-            <span class="agent-status warm" aria-hidden="true"></span>
-            <div>
-              <strong>Funding Pathways Agent</strong>
-              <p class="muted">Maps grants, cooperative finance, and member capital options.</p>
-            </div>
-            <span class="agent-chip">Drafting</span>
-          </div>
-        </aside>
-
-        <div class="agent-chat card">
-          <div class="agent-chat__header">
-            <div>
-              <p class="eyebrow">Bee Ops Console</p>
-              <h3>Agent workspace</h3>
-              <p class="muted">Safe mode on. Actions require your approval.</p>
-            </div>
-            <span class="agent-chip live">Guided preview</span>
-          </div>
-          <div class="agent-chat__log">
-            <div class="chat-row system">System: Consent confirmed. Moderation safeguards enabled.</div>
-            <div class="chat-row user">We are a housing co-op exploring legal structure and member equity.</div>
-            <div class="chat-row agent">Drafting intake summary. Recommending: bylaws review, funding scan, and clinic consult.</div>
-            <div class="chat-row agent">Pulled resources: ICA cooperative identity, USFWC legal templates, CLT financing guides.</div>
-          </div>
-          <div class="agent-chat__input">
-            <p class="muted">This static site is the live public intake surface. Start a real clinic request or use dashboard sign-in before opening member tools.</p>
-            <div class="hero__actions">
-              <a class="cta ghost" href="#clinic">Start clinic intake</a>
-              <a class="cta text" href="#portal" data-open-tab="dashboard">Go to member sign-in</a>
-            </div>
-          </div>
-        </div>
-
-        <div class="agent-tools card">
-          <h3>Playbooks & tools</h3>
-          <div class="tool-item">
-            <h4>Clinic checklist</h4>
-            <p class="muted">Intake questions, document prep, and consent prompts.</p>
-          </div>
-          <div class="tool-item">
-            <h4>Law library linkouts</h4>
-            <p class="muted">Co-op statutes, governance templates, and case examples.</p>
-          </div>
-          <div class="tool-item">
-            <h4>Community response map</h4>
-            <p class="muted">Steps for care, reporting, and secure escalation.</p>
-          </div>
-          <div class="tool-item">
-            <h4>Risk notes</h4>
-            <p class="muted">Only member-approved actions get executed.</p>
-          </div>
-        </div>
+      <div class="module-grid">
+        <article class="module-card card">
+          <h3>Clinic & legal intake</h3>
+          <p>Launch structured cooperative clinic requests, route legal questions, and prepare attorney-ready intake notes.</p>
+          <div class="module-card__meta"><span>Clinic</span><span>Legal assist</span><span>Attorney review</span></div>
+        </article>
+        <article class="module-card card">
+          <h3>Reports & safety</h3>
+          <p>Submit sensitive incident reports with protected reviewer access, evidence uploads, and moderation-aware handling.</p>
+          <div class="module-card__meta"><span>Incident reports</span><span>Moderation</span><span>Audit trail</span></div>
+        </article>
+        <article class="module-card card">
+          <h3>Member network</h3>
+          <p>Profiles, directory search, introduction requests, visibility controls, and matching opt-in stay inside the member lane.</p>
+          <div class="module-card__meta"><span>Profiles</span><span>Directory</span><span>Introductions</span></div>
+        </article>
+        <article class="module-card card">
+          <h3>Community & resources</h3>
+          <p>Read and publish moderated posts, share resources, follow co-op news, and navigate a clear reference guide.</p>
+          <div class="module-card__meta"><span>Forum</span><span>Resources</span><span>News + guide</span></div>
+        </article>
+        <article class="module-card card">
+          <h3>AI-assisted support</h3>
+          <p>Nexus AI and document analysis help members prepare questions and summaries without exposing internal tooling publicly.</p>
+          <div class="module-card__meta"><span>Nexus AI</span><span>Document analysis</span><span>Scoped access</span></div>
+        </article>
+        <article class="module-card card">
+          <h3>Release & operations</h3>
+          <p>GitHub checks, Firebase rules, production/staging parity, and deployment proof stay visible behind the scenes.</p>
+          <div class="module-card__meta"><span>GitHub</span><span>Firebase</span><span>Parity</span></div>
+        </article>
       </div>
     </section>
 
@@ -292,8 +337,8 @@
       <div class="section-header">
         <div>
           <p class="eyebrow">Newsletter</p>
-          <h2>Stay in the swarm</h2>
-          <p>Updates on BEE COOP’s projects, global co-op news, guides, and events.</p>
+          <h2>Stay current on the platform and the movement</h2>
+          <p>Get updates on BEE COOP releases, co-op news, guides, and operating changes without digging through the portal.</p>
         </div>
       </div>
       <form id="newsletterForm" class="card form-grid">
@@ -350,19 +395,19 @@
       <div class="section-header">
         <div>
           <p class="eyebrow">Forum</p>
-          <h2>Connect and share</h2>
-          <p>Read approved posts on the public board. Sign in from the dashboard to publish or comment.</p>
+          <h2>Moderated community board</h2>
+          <p>Read approved posts on the public board, then sign in to publish, comment, or request moderation review.</p>
         </div>
-        <a class="cta primary" href="#portal" data-open-tab="community">Open public board</a>
+        <a class="cta primary" href="#portal" data-open-tab="community">Open community workspace</a>
       </div>
     </section>
 
     <section id="portal" class="section-block portal-block">
       <div class="section-header">
         <div>
-          <p class="eyebrow">Member Portal</p>
-          <h2>Consultations, reports, community</h2>
-          <p>Use the dashboard to sign in, then open your private requests or the community board.</p>
+          <p class="eyebrow">Member workspace</p>
+          <h2>Private requests, member records, and governed collaboration</h2>
+          <p>Sign in here to manage consultations, reports, profiles, introductions, and community participation without exposing internal operations on the public homepage.</p>
         </div>
       </div>
       <main class="shell">
@@ -673,6 +718,37 @@
       </main>
     </section>
 
-    <div id="toast"></div>
+    <footer class="site-footer">
+      <div class="site-footer__grid">
+        <div>
+          <p class="eyebrow">BEE COOP</p>
+          <h3>A tighter front door for a real cooperative operating system.</h3>
+          <p class="muted">
+            The live static site now explains the product clearly while keeping the full member workspace, clinic,
+            reporting, community, and research stack intact beneath it.
+          </p>
+        </div>
+        <div>
+          <h4>Core routes</h4>
+          <ul class="link-list">
+            <li><a href="#clinic">Clinic intake</a></li>
+            <li><a href="#library">Research library</a></li>
+            <li><a href="#news">News</a></li>
+            <li><a href="#community-section">Forum</a></li>
+            <li><a href="#portal">Member workspace</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Runtime contract</h4>
+          <ul class="link-list">
+            <li><span>Live surface: Firebase Hosting `public/`</span></li>
+            <li><span>Portal lane: validated in `app/`</span></li>
+            <li><a href="https://github.com/coloredinnovator-ai/bee-prec" target="_blank" rel="noreferrer">GitHub repository</a></li>
+          </ul>
+        </div>
+      </div>
+    </footer>
+
+    <div id="toast" role="status" aria-live="polite"></div>
   </body>
 </html>
