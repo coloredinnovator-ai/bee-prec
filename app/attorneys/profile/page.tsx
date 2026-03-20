@@ -45,6 +45,7 @@ const emptyService: ServiceDraft = {
 export default function AttorneyProfileEditor() {
   const { user, profile } = useAuth();
   const router = useRouter();
+  const isConsultationTriage = profile?.role === 'admin' || profile?.role === 'board';
 
   const [attorney, setAttorney] = useState<any>(null);
   const [services, setServices] = useState<any[]>([]);
@@ -109,8 +110,12 @@ export default function AttorneyProfileEditor() {
       }
     );
 
+    const consultationQuery = isConsultationTriage
+      ? collection(db, 'consultations')
+      : query(collection(db, 'consultations'), where('assignedTo', '==', user.uid));
+
     const unsubConsultations = onSnapshot(
-      collection(db, 'consultations'),
+      consultationQuery,
       (snapshot) => {
         const items = snapshot.docs
           .map((consultDoc): any => ({ id: consultDoc.id, ...consultDoc.data() }))
@@ -131,7 +136,7 @@ export default function AttorneyProfileEditor() {
       unsubServices();
       unsubConsultations();
     };
-  }, [user, profile, router]);
+  }, [isConsultationTriage, user, profile, router]);
 
   const attorneyDisplayName =
     (name || attorney?.name || profile?.displayName || user?.displayName || user?.email || 'Attorney').slice(0, 120);
@@ -141,9 +146,11 @@ export default function AttorneyProfileEditor() {
       consultation.area === 'directAttorney' || consultation.consultationMode === 'direct_attorney'
   );
 
-  const unassignedConsultations = directAttorneyConsultations.filter(
-    (consultation) => !consultation.assignedTo && consultation.status !== 'closed'
-  );
+  const unassignedConsultations = isConsultationTriage
+    ? directAttorneyConsultations.filter(
+        (consultation) => !consultation.assignedTo && consultation.status !== 'closed'
+      )
+    : [];
 
   const myConsultations = directAttorneyConsultations.filter(
     (consultation) => consultation.assignedTo === user?.uid
@@ -439,7 +446,9 @@ export default function AttorneyProfileEditor() {
                   Direct Consultation Inbox
                 </h2>
                 <p className="text-sm text-zinc-500 mt-2">
-                  Claim attorney-specific requests, respond in-thread, and close matters without leaving the dashboard.
+                  {isConsultationTriage
+                    ? 'Claim direct-attorney requests, respond in-thread, and close matters without leaving the dashboard.'
+                    : 'Review only the matters assigned to you and respond in-thread without leaving the dashboard.'}
                 </p>
               </div>
               <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
@@ -450,14 +459,21 @@ export default function AttorneyProfileEditor() {
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
               <div className="space-y-4">
                 <h3 className="text-sm font-bold uppercase tracking-widest text-zinc-400">
-                  Unassigned Queue
+                  Admin Triage Queue
                 </h3>
-                {unassignedConsultations.length === 0 && (
+                {!isConsultationTriage && (
+                  <div className="text-center py-10 border border-dashed border-zinc-800 rounded-2xl">
+                    <p className="text-sm text-zinc-500">
+                      Unassigned direct-attorney requests are restricted to admin triage.
+                    </p>
+                  </div>
+                )}
+                {isConsultationTriage && unassignedConsultations.length === 0 && (
                   <div className="text-center py-10 border border-dashed border-zinc-800 rounded-2xl">
                     <p className="text-sm text-zinc-500">No unassigned direct-attorney consultations right now.</p>
                   </div>
                 )}
-                {unassignedConsultations.map((consultation) => (
+                {isConsultationTriage && unassignedConsultations.map((consultation) => (
                   <div
                     key={consultation.id}
                     className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 space-y-4"

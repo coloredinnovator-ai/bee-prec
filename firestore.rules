@@ -25,6 +25,12 @@ service cloud.firestore {
         && (userRole(request.auth.uid) == 'admin');
     }
 
+    function isConsultationTriage() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && (userRole(request.auth.uid) in ['admin', 'board']);
+    }
+
     function isSafeText(v, max) {
       return v is string && v.size() <= max && v.size() >= 1;
     }
@@ -100,6 +106,14 @@ service cloud.firestore {
         && payload.updatedAt is timestamp
         && payload.status in ['open', 'closed', 'pending', 'ai_responded', 'attorney_review']
         && payload.deleted is bool;
+    }
+
+    function canAccessConsultation(data) {
+      return signedIn() && (
+        data.createdBy == request.auth.uid
+        || (data.assignedTo != null && data.assignedTo == request.auth.uid)
+        || isConsultationTriage()
+      );
     }
 
     function isValidReport(payload) {
@@ -389,14 +403,12 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.createdBy == request.auth.uid
         && isValidConsultation(request.resource.data);
-      allow read: if signedIn() && (
-        resource.data.createdBy == request.auth.uid || isLawyerOrAdmin()
-      );
+      allow read: if canAccessConsultation(resource.data);
       allow update: if signedIn() 
         && isValidConsultation(request.resource.data)
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.createdAt == resource.data.createdAt
-        && (resource.data.createdBy == request.auth.uid || isLawyerOrAdmin());
+        && canAccessConsultation(resource.data);
       allow delete: if false;
     }
 
@@ -533,13 +545,9 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.userId == request.auth.uid
         && isValidAiAnalysis(request.resource.data);
-      allow read: if signedIn() && (
-        resource.data.userId == request.auth.uid || isLawyerOrAdmin()
-      );
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
       allow update: if false; // Analyses are immutable
-      allow delete: if signedIn() && (
-        resource.data.userId == request.auth.uid || isLawyerOrAdmin()
-      );
+      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
     }
 
     match /attorneyProfiles/{uid} {

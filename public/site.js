@@ -247,6 +247,10 @@ function roleIsLawyer() {
   return state.profile && ['lawyer', 'admin', 'board'].includes(state.profile.role);
 }
 
+function roleIsConsultationTriage() {
+  return state.profile && ['admin', 'board'].includes(state.profile.role);
+}
+
 function sanitizeText(value = '', max = MAX_TEXT_LENGTH) {
   return String(value).trim().slice(0, max);
 }
@@ -971,19 +975,38 @@ async function submitConnectionRequest(event) {
 }
 async function loadConsultations() {
   clearList(el('consultList'));
-  const consultQuery = state.lawyerMode
-    ? query(collection(db, 'consultations'), orderBy('createdAt', 'desc'))
-    : query(collection(db, 'consultations'), where('createdBy', '==', state.user.uid));
-  const snap = await getDocs(consultQuery);
-  const all = snap.docs
-    .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
-    .filter((item) => !item.deleted)
-    .sort((a, b) => {
-      const ta = toDate(a.createdAt)?.getTime() || 0;
-      const tb = toDate(b.createdAt)?.getTime() || 0;
-      return tb - ta;
-    });
-  const list = state.lawyerMode ? all : all.filter((x) => x.createdBy === state.user.uid);
+  let list = [];
+
+  if (roleIsConsultationTriage()) {
+    const snap = await getDocs(query(collection(db, 'consultations'), orderBy('createdAt', 'desc')));
+    list = snap.docs
+      .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
+      .filter((item) => !item.deleted);
+  } else {
+    const snapshots = await Promise.all([
+      getDocs(query(collection(db, 'consultations'), where('createdBy', '==', state.user.uid))),
+      state.profile?.role === 'lawyer'
+        ? getDocs(query(collection(db, 'consultations'), where('assignedTo', '==', state.user.uid)))
+        : Promise.resolve(null)
+    ]);
+    const byId = new Map();
+    snapshots
+      .filter(Boolean)
+      .forEach((snap) => {
+        snap.docs.forEach((docItem) => {
+          const item = { id: docItem.id, ...docItem.data() };
+          if (!item.deleted) byId.set(item.id, item);
+        });
+      });
+    list = Array.from(byId.values());
+  }
+
+  list = list.sort((a, b) => {
+    const ta = toDate(a.createdAt)?.getTime() || 0;
+    const tb = toDate(b.createdAt)?.getTime() || 0;
+    return tb - ta;
+  });
+
   if (!list.length) {
     clearList(el('consultList'));
     el('consultList').innerHTML = '<p class="muted">No consultation entries yet.</p>';
@@ -1252,7 +1275,7 @@ async function loadPosts() {
 
 async function loadModerationConsults() {
   clearList(el('moderationConsults'));
-  if (!state.lawyerMode) return;
+  if (!roleIsConsultationTriage()) return;
   const snap = await getDocs(query(collection(db, 'consultations'), orderBy('createdAt', 'desc')));
   const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() })).filter((x) => !x.deleted);
   if (!items.length) {
