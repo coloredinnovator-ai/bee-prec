@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { StatusNotice } from '@/components/StatusNotice';
 import { useAuth, OperationType, handleFirestoreError } from '@/components/FirebaseProvider';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { Package, Plus, Search, Filter, Hammer, Building, GraduationCap, Coins, MapPin } from 'lucide-react';
@@ -25,9 +25,16 @@ export default function ResourcesPage() {
   } | null>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'resources'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'resources'), where('moderationStatus', '==', 'approved'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setResources(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const items = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a: any, b: any) => {
+          const left = a.createdAt?.toDate?.()?.getTime?.() || 0;
+          const right = b.createdAt?.toDate?.()?.getTime?.() || 0;
+          return right - left;
+        });
+      setResources(items);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'resources');
     });
@@ -100,12 +107,11 @@ export default function ResourcesPage() {
   };
 
   const filteredResources = resources.filter(r => {
-    const isApproved = r.moderationStatus === 'approved';
     const matchesFilter = filter === 'all' || r.type === filter;
     const matchesSearch = r.title?.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           r.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           r.category?.toLowerCase().includes(searchQuery.toLowerCase());
-    return isApproved && matchesFilter && matchesSearch;
+    return matchesFilter && matchesSearch;
   });
 
   const typeIcons: any = {

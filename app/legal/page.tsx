@@ -4,7 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { StatusNotice } from '@/components/StatusNotice';
 import { useAuth, OperationType, handleFirestoreError } from '@/components/FirebaseProvider';
-import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, query, where, onSnapshot, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { Shield, Send, Bot, Clock, CheckCircle2, AlertCircle, Scale, User } from 'lucide-react';
@@ -47,11 +47,18 @@ function LegalPageContent() {
     if (!user) return;
     const q = query(
       collection(db, 'consultations'),
-      where('createdBy', '==', user.uid),
-      orderBy('createdAt', 'desc')
+      where('createdBy', '==', user.uid)
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setConsultations(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const items = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a: any, b: any) => {
+          const left = a.createdAt?.toDate?.()?.getTime?.() || 0;
+          const right = b.createdAt?.toDate?.()?.getTime?.() || 0;
+          return right - left;
+        });
+
+      setConsultations(items);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'consultations');
     });
@@ -91,20 +98,36 @@ function LegalPageContent() {
           "I'm sorry, I couldn't generate a response at this time.";
       }
 
-      await addDoc(collection(db, 'consultations'), {
+      const clientName =
+        (profile?.displayName || user.displayName || user.email || 'Unknown').slice(0, 80);
+      const payload: Record<string, any> = {
         createdBy: user.uid,
-        clientName: profile?.displayName || user.email || 'Unknown',
+        clientName,
         topic: subject,
-        area: selectedAttorney ? 'Direct Attorney Consultation' : 'AI Consultation',
+        area: selectedAttorney ? 'directAttorney' : 'AI Consultation',
+        consultationMode: selectedAttorney ? 'direct_attorney' : 'ai_guidance',
         notes: message,
-        aiResponse: aiText,
-        assignedTo: selectedAttorney?.id || null,
-        assignedAttorneyName: selectedAttorney?.name || null,
-        status: 'open',
+        status: selectedAttorney ? 'attorney_review' : 'ai_responded',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         deleted: false
-      });
+      };
+
+      const preferredContact = user.email && user.email.length <= 80 ? user.email : null;
+      if (preferredContact) {
+        payload.preferredContact = preferredContact;
+      }
+      if (!selectedAttorney && aiText) {
+        payload.aiResponse = aiText;
+      }
+      if (selectedAttorney?.id) {
+        payload.assignedTo = selectedAttorney.id;
+      }
+      if (selectedAttorney?.name) {
+        payload.assignedAttorneyName = selectedAttorney.name;
+      }
+
+      await addDoc(collection(db, 'consultations'), payload);
 
       setSubject('');
       setMessage('');
@@ -269,6 +292,25 @@ function LegalPageContent() {
                       <div className="space-y-2">
                         <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">Assigned Attorney</p>
                         <p className="text-zinc-300 text-sm">{consult.assignedAttorneyName}</p>
+                      </div>
+                    )}
+
+                    {consult.attorneyResponse && (
+                      <div className="space-y-3 p-6 bg-zinc-900/50 rounded-2xl border border-zinc-800">
+                        <div className="flex items-center gap-2 text-yellow-500">
+                          <Scale className="h-4 w-4" />
+                          <span className="text-[10px] font-bold uppercase tracking-widest">
+                            Attorney Response
+                          </span>
+                        </div>
+                        <div className="prose prose-invert prose-sm max-w-none text-zinc-300">
+                          <ReactMarkdown>{consult.attorneyResponse}</ReactMarkdown>
+                        </div>
+                        {consult.attorneyRespondedAt?.toDate && (
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">
+                            Responded {new Date(consult.attorneyRespondedAt.toDate()).toLocaleString()}
+                          </p>
+                        )}
                       </div>
                     )}
                     

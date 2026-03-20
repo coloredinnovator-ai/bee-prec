@@ -83,13 +83,19 @@ service cloud.firestore {
 
     function isValidConsultation(payload) {
       return isSafeText(payload.topic, 120)
-        && payload.area in ['contracts', 'workplace', 'smallBusiness', 'cyber', 'other', 'AI Consultation']
+        && payload.area in ['contracts', 'workplace', 'smallBusiness', 'cyber', 'other', 'AI Consultation', 'directAttorney']
         && (!('urgency' in payload) || payload.urgency in ['low', 'normal', 'high', 'critical'])
         && isSafeText(payload.notes, 5000)
         && isSafeText(payload.createdBy, 128)
         && isSafeText(payload.clientName, 80)
         && (!('preferredContact' in payload) || isSafeText(payload.preferredContact, 80))
         && (!('aiResponse' in payload) || (payload.aiResponse is string && payload.aiResponse.size() <= 10000))
+        && (!('consultationMode' in payload) || payload.consultationMode in ['ai_guidance', 'direct_attorney'])
+        && (!('assignedTo' in payload) || payload.assignedTo == null || (payload.assignedTo is string && payload.assignedTo.size() <= 128))
+        && (!('assignedAttorneyName' in payload) || (payload.assignedAttorneyName is string && payload.assignedAttorneyName.size() <= 120))
+        && (!('attorneyResponse' in payload) || (payload.attorneyResponse is string && payload.attorneyResponse.size() <= 10000))
+        && (!('attorneyRespondedAt' in payload) || payload.attorneyRespondedAt is timestamp)
+        && (!('attorneyRespondedBy' in payload) || (payload.attorneyRespondedBy is string && payload.attorneyRespondedBy.size() <= 128))
         && payload.createdAt is timestamp
         && payload.updatedAt is timestamp
         && payload.status in ['open', 'closed', 'pending', 'ai_responded', 'attorney_review']
@@ -122,6 +128,8 @@ service cloud.firestore {
         && isSafeText(payload.authorName, 80)
         && payload.flags is int
         && payload.flags >= 0
+        && (!('likes' in payload) || (payload.likes is int && payload.likes >= 0))
+        && (!('likedBy' in payload) || (payload.likedBy is list && payload.likedBy.size() <= 500))
         && payload.removed is bool
         && (!('moderationStatus' in payload) || payload.moderationStatus in ['pending', 'approved', 'rejected'])
         && payload.createdAt is timestamp
@@ -197,6 +205,19 @@ service cloud.firestore {
         && (!('category' in payload) || (payload.category is string && payload.category.size() <= 80))
         && (!('moderationStatus' in payload) || payload.moderationStatus in ['pending', 'approved', 'rejected'])
         && payload.createdAt is timestamp;
+    }
+
+    function isValidResourceRequest(payload) {
+      return isSafeText(payload.resourceId, 128)
+        && isSafeText(payload.resourceTitle, 120)
+        && payload.resourceType in ['tool', 'space', 'expertise', 'funding']
+        && isSafeText(payload.requesterId, 128)
+        && isSafeText(payload.requesterName, 120)
+        && (!('requesterEmail' in payload) || (payload.requesterEmail == null || (payload.requesterEmail is string && payload.requesterEmail.size() <= 160)))
+        && (!('note' in payload) || (payload.note is string && payload.note.size() <= 1200))
+        && payload.status in ['pending', 'approved', 'rejected']
+        && payload.createdAt is timestamp
+        && payload.updatedAt is timestamp;
     }
 
     function isValidMinute(payload) {
@@ -339,12 +360,28 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.ownerUid == request.auth.uid
         && isValidResource(request.resource.data);
-      allow read: if signedIn();
+      allow read: if (resource.data.moderationStatus == 'approved') || isLawyerOrAdmin() || (signedIn() && resource.data.ownerUid == request.auth.uid);
       allow update: if signedIn() 
         && isValidResource(request.resource.data)
         && request.resource.data.ownerUid == resource.data.ownerUid
         && request.resource.data.createdAt == resource.data.createdAt
         && (resource.data.ownerUid == request.auth.uid || isLawyerOrAdmin());
+      allow delete: if false;
+    }
+
+    match /resourceRequests/{requestId} {
+      allow create: if signedIn()
+        && request.resource.data.requesterId == request.auth.uid
+        && isValidResourceRequest(request.resource.data);
+      allow read: if signedIn() && (
+        resource.data.requesterId == request.auth.uid || isLawyerOrAdmin()
+      );
+      allow update: if signedIn()
+        && isValidResourceRequest(request.resource.data)
+        && request.resource.data.requesterId == resource.data.requesterId
+        && request.resource.data.resourceId == resource.data.resourceId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && isLawyerOrAdmin();
       allow delete: if false;
     }
 
@@ -382,14 +419,28 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.createdBy == request.auth.uid
         && isValidPost(request.resource.data);
-      allow read: if signedIn() && (
-        !resource.data.removed || isLawyerOrAdmin()
+      allow read: if (
+        (!resource.data.removed && resource.data.moderationStatus == 'approved')
+        || isLawyerOrAdmin()
       );
       allow update: if signedIn() 
         && isValidPost(request.resource.data)
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.createdAt == resource.data.createdAt
-        && (resource.data.createdBy == request.auth.uid || isLawyerOrAdmin());
+        && (
+          resource.data.createdBy == request.auth.uid
+          || isLawyerOrAdmin()
+          || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likedBy', 'likes', 'updatedAt'])
+            && request.resource.data.removed == resource.data.removed
+            && request.resource.data.title == resource.data.title
+            && request.resource.data.body == resource.data.body
+            && request.resource.data.category == resource.data.category
+            && request.resource.data.authorName == resource.data.authorName
+            && request.resource.data.flags == resource.data.flags
+            && request.resource.data.moderationStatus == resource.data.moderationStatus
+          )
+        );
       allow delete: if false;
     }
 

@@ -244,7 +244,7 @@ function showSection(sectionId) {
 }
 
 function roleIsLawyer() {
-  return state.profile && (state.profile.role === 'lawyer' || state.profile.role === 'admin');
+  return state.profile && ['lawyer', 'admin', 'board'].includes(state.profile.role);
 }
 
 function sanitizeText(value = '', max = MAX_TEXT_LENGTH) {
@@ -971,10 +971,18 @@ async function submitConnectionRequest(event) {
 }
 async function loadConsultations() {
   clearList(el('consultList'));
-  const snap = await getDocs(query(collection(db, 'consultations'), orderBy('createdAt', 'desc')));
+  const consultQuery = state.lawyerMode
+    ? query(collection(db, 'consultations'), orderBy('createdAt', 'desc'))
+    : query(collection(db, 'consultations'), where('createdBy', '==', state.user.uid));
+  const snap = await getDocs(consultQuery);
   const all = snap.docs
     .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
-    .filter((item) => !item.deleted);
+    .filter((item) => !item.deleted)
+    .sort((a, b) => {
+      const ta = toDate(a.createdAt)?.getTime() || 0;
+      const tb = toDate(b.createdAt)?.getTime() || 0;
+      return tb - ta;
+    });
   const list = state.lawyerMode ? all : all.filter((x) => x.createdBy === state.user.uid);
   if (!list.length) {
     clearList(el('consultList'));
@@ -1005,7 +1013,10 @@ async function loadConsultations() {
           : {
               label: 'Delete',
               onClick: async () => {
-                await updateDoc(doc(db, 'consultations', item.id), { deleted: true, deletedAt: serverTimestamp() });
+                await updateDoc(doc(db, 'consultations', item.id), {
+                  deleted: true,
+                  updatedAt: serverTimestamp()
+                });
                 await loadConsultations();
               }
             }
@@ -1017,10 +1028,18 @@ async function loadConsultations() {
 
 async function loadReports() {
   clearList(el('reportList'));
-  const snap = await getDocs(query(collection(db, 'incidentReports'), orderBy('createdAt', 'desc')));
+  const reportQuery = state.lawyerMode
+    ? query(collection(db, 'incidentReports'), orderBy('createdAt', 'desc'))
+    : query(collection(db, 'incidentReports'), where('reportedBy', '==', state.user.uid));
+  const snap = await getDocs(reportQuery);
   const all = snap.docs
     .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
-    .filter((item) => !item.deleted);
+    .filter((item) => !item.deleted)
+    .sort((a, b) => {
+      const ta = toDate(a.createdAt)?.getTime() || 0;
+      const tb = toDate(b.createdAt)?.getTime() || 0;
+      return tb - ta;
+    });
   const list = state.lawyerMode ? all : all.filter((x) => x.reportedBy === state.user.uid);
   if (!list.length) {
     el('reportList').innerHTML = '<p class="muted">No reports to show yet.</p>';
@@ -1062,7 +1081,10 @@ async function loadReports() {
             {
               label: 'Delete',
               onClick: async () => {
-                await updateDoc(doc(db, 'incidentReports', item.id), { deleted: true, deletedAt: serverTimestamp() });
+                await updateDoc(doc(db, 'incidentReports', item.id), {
+                  deleted: true,
+                  updatedAt: serverTimestamp()
+                });
                 await loadReports();
               }
             }
@@ -1099,7 +1121,7 @@ async function loadPostComments(postId) {
       del.addEventListener('click', async () => {
         await updateDoc(doc(db, 'communityComments', c.id), {
           deleted: true,
-          deletedAt: serverTimestamp()
+          updatedAt: serverTimestamp()
         });
         await loadPosts();
       });
@@ -1112,8 +1134,22 @@ async function loadPostComments(postId) {
 
 async function loadPosts() {
   clearList(el('postFeed'));
-  const snap = await getDocs(query(collection(db, 'communityPosts'), orderBy('createdAt', 'desc')));
-  const posts = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() })).filter((p) => !p.removed);
+  const postsQuery = roleIsLawyer()
+    ? query(collection(db, 'communityPosts'), orderBy('createdAt', 'desc'))
+    : query(
+        collection(db, 'communityPosts'),
+        where('moderationStatus', '==', 'approved'),
+        where('removed', '==', false)
+      );
+  const snap = await getDocs(postsQuery);
+  const posts = snap.docs
+    .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
+    .filter((p) => !p.removed)
+    .sort((a, b) => {
+      const ta = toDate(a.createdAt)?.getTime() || 0;
+      const tb = toDate(b.createdAt)?.getTime() || 0;
+      return tb - ta;
+    });
   if (!posts.length) {
     el('postFeed').innerHTML = '<p class="muted">No posts yet.</p>';
     return;
@@ -1143,7 +1179,10 @@ async function loadPosts() {
       hideBtn.textContent = 'Hide';
       hideBtn.className = 'danger';
       hideBtn.addEventListener('click', async () => {
-        await updateDoc(doc(db, 'communityPosts', p.id), { removed: true, removedAt: serverTimestamp() });
+        await updateDoc(doc(db, 'communityPosts', p.id), {
+          removed: true,
+          updatedAt: serverTimestamp()
+        });
         await loadPosts();
         await loadModerationPosts();
       });
@@ -1155,7 +1194,10 @@ async function loadPosts() {
       delBtn.textContent = 'Delete';
       delBtn.className = 'danger';
       delBtn.addEventListener('click', async () => {
-        await updateDoc(doc(db, 'communityPosts', p.id), { removed: true, removedAt: serverTimestamp() });
+        await updateDoc(doc(db, 'communityPosts', p.id), {
+          removed: true,
+          updatedAt: serverTimestamp()
+        });
         await loadPosts();
       });
       row.appendChild(delBtn);
@@ -1302,7 +1344,10 @@ async function loadModerationPosts() {
           label: 'Hide',
           className: 'danger',
           onClick: async () => {
-            await updateDoc(doc(db, 'communityPosts', item.id), { removed: true, removedAt: serverTimestamp() });
+            await updateDoc(doc(db, 'communityPosts', item.id), {
+              removed: true,
+              updatedAt: serverTimestamp()
+            });
             await loadModerationPosts();
             await loadPosts();
           }
@@ -1387,13 +1432,11 @@ async function loadModerationDeletionRequests() {
                   status: 'approved',
                   reviewedAt: serverTimestamp(),
                   reviewedBy: state.user.uid,
-                  reviewedByName: sanitizeText(state.profile?.displayName || state.user.email, MAX_NAME_LENGTH),
+                  updatedBy: state.user.uid,
                   updatedAt: serverTimestamp()
                 });
                 await updateDoc(doc(db, 'users', item.requesterId), {
                   deleted: true,
-                  deletedAt: serverTimestamp(),
-                  deletedReason: sanitizeText(item.reason || '', MAX_REASON_LENGTH),
                   updatedAt: serverTimestamp()
                 });
                 await loadModerationDeletionRequests();
@@ -1638,10 +1681,13 @@ async function deleteCurrentUserContent() {
   for (const [colRef, key] of toArchive) {
     const snap = await getDocs(query(colRef, where(key, '==', uid)));
     for (const d of snap.docs) {
-      await updateDoc(d.ref, { deleted: true, deletedAt: serverTimestamp() });
+      const archivePayload = d.ref.parent.id === 'communityPosts'
+        ? { removed: true, updatedAt: serverTimestamp() }
+        : { deleted: true, updatedAt: serverTimestamp() };
+      await updateDoc(d.ref, archivePayload);
     }
   }
-  await updateDoc(doc(db, 'users', uid), { deleted: true, deletedAt: serverTimestamp() });
+  await updateDoc(doc(db, 'users', uid), { deleted: true, updatedAt: serverTimestamp() });
 }
 
 async function setupEventHandlers() {

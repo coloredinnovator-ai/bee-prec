@@ -36,6 +36,8 @@ GitHub Actions is the primary deployment path for the static site.
    - Firestore rules
    - Storage rules
 5. The Next.js app is still part of the repo, but its runtime is not the current Firebase Hosting output.
+6. Treat the static Firebase site as the live public/member intake surface until a separate written cutover moves traffic to the Next.js runtime.
+7. Do not assume `app/` changes are live in production unless the release path is explicitly changed in GitHub workflows and deployment docs.
 
 ## CI and operations assets
 
