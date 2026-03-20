@@ -1,4 +1,4 @@
-name: Deploy Static Firebase Website
+name: Deploy Static Site to Firebase Hosting
 permissions:
   contents: read
   id-token: write

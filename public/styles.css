@@ -694,8 +694,8 @@ button.danger {
 }
 
 .hero.staging-woodcut {
-  background-image: radial-gradient(circle at 12% 20%, rgba(240, 180, 41, 0.12), transparent 32%), radial-gradient(circle at 82% 8%, rgba(45, 106, 79, 0.14), transparent 36%), linear-gradient(135deg, #0c0f12 0%, #11171c 45%, #0f1916 100%);
-  background-size: auto, auto, auto;
+  background-image: url('/assets/woodcut-hero.jpg'), radial-gradient(circle at 12% 20%, rgba(240, 180, 41, 0.12), transparent 32%), radial-gradient(circle at 82% 8%, rgba(45, 106, 79, 0.14), transparent 36%), linear-gradient(135deg, #0c0f12 0%, #11171c 45%, #0f1916 100%);
+  background-size: cover, auto, auto, auto;
   background-position: center;
 }
 

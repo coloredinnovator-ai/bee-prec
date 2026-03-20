@@ -1,0 +1,145 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Information about a member of the B-PREC community.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The unique Firebase Auth ID." },
+        "displayName": { "type": "string", "description": "Public name of the user." },
+        "email": { "type": "string", "format": "email", "description": "Private email address." },
+        "photoURL": { "type": "string", "description": "URL to the user's profile picture." },
+        "bio": { "type": "string", "description": "Short biography or description of co-op interests." },
+        "role": { "type": "string", "enum": ["member", "attorney", "admin"], "description": "User's role in the system." },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "email", "role"]
+    },
+    "ForumPost": {
+      "title": "Forum Post",
+      "description": "A discussion thread or post in the community forum.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "authorName": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "category": { "type": "string", "enum": ["general", "legal", "resources", "sharing"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "flags": { "type": "number" },
+        "removed": { "type": "boolean" }
+      },
+      "required": ["createdBy", "title", "body", "category"]
+    },
+    "Resource": {
+      "title": "Shared Resource",
+      "description": "A resource shared by a community member.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "type": { "type": "string", "enum": ["tool", "space", "expertise", "funding"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerUid", "title", "description", "type"]
+    },
+    "LegalConsultation": {
+      "title": "Legal Consultation",
+      "description": "A request for legal assistance or AI-assisted guidance.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userUid": { "type": "string" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "aiResponse": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "ai_responded", "attorney_review", "closed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userUid", "subject", "message", "status"]
+    },
+    "AiAnalysis": {
+      "title": "AI Analysis",
+      "description": "A record of an AI document analysis performed by a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileType": { "type": "string" },
+        "prompt": { "type": "string" },
+        "result": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "fileName", "prompt", "result"]
+    },
+    "AttorneyProfile": {
+      "title": "Attorney Profile",
+      "description": "Public profile for an attorney offering services.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "barAdmissions": { "type": "array", "items": { "type": "string" } },
+        "specializations": { "type": "array", "items": { "type": "string" } },
+        "yearsOfExperience": { "type": "number" },
+        "bio": { "type": "string" },
+        "testimonials": { "type": "array", "items": { "type": "object" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "barAdmissions", "specializations", "yearsOfExperience"]
+    },
+    "LegalService": {
+      "title": "Legal Service",
+      "description": "A specific legal service offered by an attorney.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "attorneyId": { "type": "string" },
+        "attorneyName": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "feeType": { "type": "string", "enum": ["flat", "hourly", "sliding-scale", "consultation"] },
+        "feeAmount": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["attorneyId", "attorneyName", "title", "category", "feeType"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles indexed by UID."
+    },
+    "/communityPosts/{postId}": {
+      "schema": "ForumPost",
+      "description": "Community discussion posts."
+    },
+    "/resources/{resourceId}": {
+      "schema": "Resource",
+      "description": "Shared community resources."
+    },
+    "/consultations/{consultationId}": {
+      "schema": "LegalConsultation",
+      "description": "Legal help requests and AI responses."
+    },
+    "/aiAnalyses/{analysisId}": {
+      "schema": "AiAnalysis",
+      "description": "History of AI document analyses."
+    },
+    "/attorneyProfiles/{uid}": {
+      "schema": "AttorneyProfile",
+      "description": "Public profiles for attorneys."
+    },
+    "/legalServices/{serviceId}": {
+      "schema": "LegalService",
+      "description": "Catalog of legal services offered by attorneys."
+    }
+  }
+}
