@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { Navbar } from '@/components/Navbar';
+import { StatusNotice } from '@/components/StatusNotice';
 import { useAuth, OperationType, handleFirestoreError } from '@/components/FirebaseProvider';
-import { collection, query, onSnapshot, addDoc, serverTimestamp, updateDoc, doc, increment, where } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, serverTimestamp, updateDoc, doc, increment, where, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { MessageSquare, Plus, ThumbsUp, Tag, Clock, User as UserIcon } from 'lucide-react';
@@ -15,12 +16,12 @@ export default function ForumPage() {
   const [isPosting, setIsPosting] = useState(false);
   const [newPost, setNewPost] = useState({ title: '', body: '', category: 'general' });
   const [searchQuery, setSearchQuery] = useState('');
+  const [notice, setNotice] = useState<{
+    tone: 'error' | 'info' | 'success';
+    message: string;
+  } | null>(null);
 
   useEffect(() => {
-    if (!user) {
-      return;
-    }
-
     const q = query(
       collection(db, 'communityPosts'),
       where('removed', '==', false),
@@ -39,11 +40,17 @@ export default function ForumPage() {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user) {
+      setNotice({
+        tone: 'info',
+        message: 'Connect your account to publish a forum post.',
+      });
+      return;
+    }
 
     try {
       await addDoc(collection(db, 'communityPosts'), {
@@ -52,6 +59,8 @@ export default function ForumPage() {
         category: newPost.category,
         createdBy: user.uid,
         authorName: profile?.displayName || user.displayName || 'Anonymous Bee',
+        likes: 0,
+        likedBy: [],
         flags: 0,
         removed: false,
         moderationStatus: 'pending',
@@ -60,8 +69,34 @@ export default function ForumPage() {
       });
       setNewPost({ title: '', body: '', category: 'general' });
       setIsPosting(false);
+      setNotice({
+        tone: 'success',
+        message: 'Your post was submitted for moderation and will appear once approved.',
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'communityPosts');
+    }
+  };
+
+  const toggleLike = async (post: any) => {
+    if (!user) {
+      setNotice({
+        tone: 'info',
+        message: 'Connect your account to react to community posts.',
+      });
+      return;
+    }
+
+    const hasLiked = post.likedBy?.includes(user.uid);
+
+    try {
+      await updateDoc(doc(db, 'communityPosts', post.id), {
+        likedBy: hasLiked ? arrayRemove(user.uid) : arrayUnion(user.uid),
+        likes: increment(hasLiked ? -1 : 1),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `communityPosts/${post.id}`);
     }
   };
 
@@ -105,6 +140,14 @@ export default function ForumPage() {
             )}
           </div>
         </div>
+
+        {notice && (
+          <StatusNotice
+            tone={notice.tone}
+            message={notice.message}
+            className="mb-8"
+          />
+        )}
 
         <AnimatePresence>
           {isPosting && (
@@ -210,10 +253,20 @@ export default function ForumPage() {
               </p>
               
               <div className="flex items-center gap-4 pt-6 border-t border-zinc-900">
-                <button className="flex items-center gap-2 text-sm font-medium text-zinc-500 hover:text-zinc-100 transition-colors">
-                  <MessageSquare className="h-4 w-4" />
-                  Reply
+                <button
+                  onClick={() => toggleLike(post)}
+                  className={`flex items-center gap-2 text-sm font-medium transition-colors ${
+                    user && post.likedBy?.includes(user.uid)
+                      ? 'text-yellow-500'
+                      : 'text-zinc-500 hover:text-zinc-100'
+                  }`}
+                >
+                  <ThumbsUp className="h-4 w-4" />
+                  {post.likes || 0}
                 </button>
+                <span className="text-xs font-bold uppercase tracking-widest text-zinc-600">
+                  Approved for public discussion
+                </span>
               </div>
             </motion.div>
           ))}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/components/FirebaseProvider';
-import { collection, query, getDocs, doc, updateDoc, serverTimestamp, where, orderBy } from 'firebase/firestore';
+import { collection, query, getDocs, doc, updateDoc, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import Image from 'next/image';
@@ -40,7 +40,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 
 export default function AdminPage() {
   const { user, profile, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'users' | 'posts' | 'resources'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'posts' | 'resources' | 'requests'>('users');
   
   // Users State
   const [users, setUsers] = useState<any[]>([]);
@@ -54,6 +54,7 @@ export default function AdminPage() {
   // Moderation State
   const [pendingPosts, setPendingPosts] = useState<any[]>([]);
   const [pendingResources, setPendingResources] = useState<any[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [loadingModeration, setLoadingModeration] = useState(true);
 
   // UI State
@@ -92,6 +93,11 @@ export default function AdminPage() {
       const resourcesQuery = query(collection(db, 'resources'), where('moderationStatus', '==', 'pending'));
       const resourcesSnapshot = await getDocs(resourcesQuery);
       setPendingResources(resourcesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+      // Fetch Pending Resource Requests
+      const requestsQuery = query(collection(db, 'resourceRequests'), where('status', '==', 'pending'));
+      const requestsSnapshot = await getDocs(requestsQuery);
+      setPendingRequests(requestsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     } catch (err) {
       console.error('Failed to fetch pending content:', err);
       showToast('Failed to load pending content', 'error');
@@ -171,6 +177,20 @@ export default function AdminPage() {
     } catch (err) {
       console.error('Failed to moderate resource:', err);
       showToast('Failed to moderate resource', 'error');
+    }
+  };
+
+  const handleModerateRequest = async (requestId: string, status: 'approved' | 'rejected') => {
+    try {
+      await updateDoc(doc(db, 'resourceRequests', requestId), {
+        status,
+        updatedAt: serverTimestamp(),
+      });
+      showToast(`Request ${status} successfully`, 'success');
+      setPendingRequests(prev => prev.filter(request => request.id !== requestId));
+    } catch (err) {
+      console.error('Failed to moderate request:', err);
+      showToast('Failed to moderate request', 'error');
     }
   };
 
@@ -312,6 +332,22 @@ export default function AdminPage() {
             {pendingResources.length > 0 && (
               <span className="ml-2 bg-amber-500 text-amber-950 text-xs py-0.5 px-2 rounded-full font-bold">
                 {pendingResources.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('requests')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+              activeTab === 'requests'
+                ? 'bg-white dark:bg-zinc-800 text-stone-900 dark:text-zinc-100 shadow-sm'
+                : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-200 hover:bg-stone-200 dark:hover:bg-zinc-800/50'
+            }`}
+          >
+            <Clock className="h-4 w-4" />
+            Access Requests
+            {pendingRequests.length > 0 && (
+              <span className="ml-2 bg-amber-500 text-amber-950 text-xs py-0.5 px-2 rounded-full font-bold">
+                {pendingRequests.length}
               </span>
             )}
           </button>
@@ -556,6 +592,66 @@ export default function AdminPage() {
                         </button>
                         <button
                           onClick={() => handleModerateResource(resource.id, 'rejected')}
+                          className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors"
+                        >
+                          <X className="h-4 w-4" />
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ACCESS REQUESTS TAB */}
+          {activeTab === 'requests' && (
+            <div className="p-6">
+              {pendingRequests.length === 0 ? (
+                <div className="text-center py-12">
+                  <CheckCircle className="h-12 w-12 text-emerald-500 mx-auto mb-4 opacity-50" />
+                  <h3 className="text-lg font-medium text-stone-900 dark:text-zinc-100">All caught up!</h3>
+                  <p className="text-stone-500 dark:text-zinc-400 mt-1">There are no pending resource access requests.</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {pendingRequests.map(request => (
+                    <div key={request.id} className="bg-stone-50 dark:bg-zinc-950/50 border border-stone-200 dark:border-zinc-800 rounded-xl p-6">
+                      <div className="flex justify-between items-start gap-4 mb-4">
+                        <div>
+                          <div className="flex items-center gap-3 mb-1">
+                            <h3 className="text-xl font-bold text-stone-900 dark:text-zinc-100">{request.resourceTitle}</h3>
+                            {request.resourceType && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-stone-200 text-stone-800 dark:bg-zinc-800 dark:text-zinc-200 capitalize">
+                                {request.resourceType}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-stone-500 dark:text-zinc-400">
+                            Requested by {request.requesterName || request.requesterEmail || 'Unknown member'}
+                          </p>
+                          {request.requesterEmail && (
+                            <p className="text-xs text-stone-500 dark:text-zinc-500 mt-1">{request.requesterEmail}</p>
+                          )}
+                        </div>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                          Pending Review
+                        </span>
+                      </div>
+                      <div className="prose prose-sm dark:prose-invert max-w-none mb-6">
+                        <p className="whitespace-pre-wrap">{request.note || 'No request note provided.'}</p>
+                      </div>
+                      <div className="flex items-center gap-3 border-t border-stone-200 dark:border-zinc-800 pt-4">
+                        <button
+                          onClick={() => handleModerateRequest(request.id, 'approved')}
+                          className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium transition-colors"
+                        >
+                          <Check className="h-4 w-4" />
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleModerateRequest(request.id, 'rejected')}
                           className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors"
                         >
                           <X className="h-4 w-4" />

@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { Navbar } from '@/components/Navbar';
+import { StatusNotice } from '@/components/StatusNotice';
 import { useAuth, OperationType, handleFirestoreError } from '@/components/FirebaseProvider';
 import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
-import { GoogleGenAI } from '@google/genai';
 import { motion, AnimatePresence } from 'motion/react';
 import { Shield, Send, Bot, Clock, CheckCircle2, AlertCircle, Scale, User } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -21,6 +21,10 @@ function LegalPageContent() {
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedAttorney, setSelectedAttorney] = useState<any>(null);
+  const [submissionNotice, setSubmissionNotice] = useState<{
+    tone: 'error' | 'info' | 'success';
+    message: string;
+  } | null>(null);
 
   useEffect(() => {
     if (attorneyId) {
@@ -58,26 +62,35 @@ function LegalPageContent() {
     e.preventDefault();
     if (!user || !subject || !message) return;
     setIsSubmitting(true);
+    setSubmissionNotice(null);
 
     try {
       let aiText = '';
       if (!selectedAttorney) {
-        // 1. Get AI response first if no specific attorney is selected
-        const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY! });
-        const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: `You are a legal assistant for B-PREC (Cooperative Legal Nexus). 
-          The user is asking about a cooperative legal matter. 
-          Provide a helpful, professional, and informative response. 
-          DISCLAIMER: State clearly that this is AI-generated guidance and not official legal advice.
-          
-          Subject: ${subject}
-          Message: ${message}`,
+        const token = await user.getIdToken();
+        const aiResponse = await fetch('/api/legal-assist', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            subject,
+            message,
+          }),
         });
-        aiText = response.text || "I'm sorry, I couldn't generate a response at this time.";
+
+        const aiPayload = await aiResponse.json();
+
+        if (!aiResponse.ok) {
+          throw new Error(aiPayload.error || 'Failed to generate legal guidance.');
+        }
+
+        aiText =
+          aiPayload.response ||
+          "I'm sorry, I couldn't generate a response at this time.";
       }
 
-      // 2. Save to Firestore
       await addDoc(collection(db, 'consultations'), {
         createdBy: user.uid,
         clientName: profile?.displayName || user.email || 'Unknown',
@@ -95,11 +108,21 @@ function LegalPageContent() {
 
       setSubject('');
       setMessage('');
-      if (selectedAttorney) {
-        alert(`Your consultation request has been sent to ${selectedAttorney.name}.`);
-      }
+      setSubmissionNotice({
+        tone: 'success',
+        message: selectedAttorney
+          ? `Your consultation request has been sent to ${selectedAttorney.name}.`
+          : 'Your AI consultation has been recorded and added to your history.',
+      });
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'consultations');
+      console.error('Consultation submission failed:', error);
+      setSubmissionNotice({
+        tone: 'error',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to submit your consultation.',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -124,6 +147,14 @@ function LegalPageContent() {
             </div>
 
             <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-xl">
+              {submissionNotice && (
+                <StatusNotice
+                  tone={submissionNotice.tone}
+                  message={submissionNotice.message}
+                  className="mb-6"
+                />
+              )}
+
               {selectedAttorney ? (
                 <div className="flex items-center gap-3 mb-6 p-3 bg-zinc-800/50 rounded-2xl border border-zinc-700">
                   <User className="h-5 w-5 text-zinc-400 shrink-0" />
@@ -175,7 +206,7 @@ function LegalPageContent() {
                   ) : (
                     <>
                       <Send className="h-5 w-5" />
-                      Consult AI
+                      {selectedAttorney ? 'Request Consultation' : 'Consult AI'}
                     </>
                   )}
                 </button>
@@ -233,6 +264,13 @@ function LegalPageContent() {
                       <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">Your Inquiry</p>
                       <p className="text-zinc-400 text-sm leading-relaxed">{consult.notes || consult.message}</p>
                     </div>
+
+                    {consult.assignedAttorneyName && (
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">Assigned Attorney</p>
+                        <p className="text-zinc-300 text-sm">{consult.assignedAttorneyName}</p>
+                      </div>
+                    )}
                     
                     {consult.aiResponse && (
                       <div className="space-y-3 p-6 bg-zinc-900/50 rounded-2xl border border-zinc-800">

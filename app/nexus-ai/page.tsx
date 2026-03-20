@@ -2,10 +2,10 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Navbar } from '@/components/Navbar';
+import { StatusNotice } from '@/components/StatusNotice';
 import { useAuth } from '@/components/FirebaseProvider';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Upload, FileText, AlertTriangle, CheckCircle, Loader2, FileUp, X, Download, History, ChevronRight } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
 import Image from 'next/image';
 import ReactMarkdown from 'react-markdown';
 import { collection, addDoc, query, where, orderBy, getDocs, serverTimestamp } from 'firebase/firestore';
@@ -13,7 +13,6 @@ import { db } from '@/firebase';
 
 export default function NexusAIPage() {
   const { user } = useAuth();
-  const geminiApiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY?.trim() ?? '';
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -96,10 +95,6 @@ export default function NexusAIPage() {
 
   const analyzeDocument = async () => {
     if (!file) return;
-    if (!geminiApiKey) {
-      setError('Nexus AI is not configured. Set NEXT_PUBLIC_GEMINI_API_KEY to enable document analysis.');
-      return;
-    }
     
     setIsAnalyzing(true);
     setError(null);
@@ -107,7 +102,7 @@ export default function NexusAIPage() {
 
     try {
       const base64Data = await fileToBase64(file);
-      
+
       const defaultPrompt = `Analyze this document for a cooperative enterprise. 
       Please provide:
       1. A brief summary of the document.
@@ -116,27 +111,30 @@ export default function NexusAIPage() {
       Format the response in clean Markdown.`;
 
       const finalPrompt = customPrompt.trim() ? customPrompt : defaultPrompt;
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType: file.type,
-                data: base64Data
-              }
-            },
-            {
-              text: finalPrompt
-            }
-          ]
-        }
+      const token = user ? await user.getIdToken() : null;
+      const response = await fetch('/api/document-analysis', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          fileName: file.name,
+          mimeType: file.type,
+          base64Data,
+          prompt: finalPrompt,
+        }),
       });
 
-      if (response.text) {
-        setAnalysisResult(response.text);
+      const payload = await response.json();
+
+      if (!response.ok) {
+        setError(payload.error || 'Failed to generate analysis. Please try again.');
+        return;
+      }
+
+      if (payload.result) {
+        setAnalysisResult(payload.result);
         
         // Save to history if user is logged in
         if (user) {
@@ -146,7 +144,7 @@ export default function NexusAIPage() {
               fileName: file.name,
               fileType: file.type,
               prompt: finalPrompt,
-              result: response.text,
+              result: payload.result,
               createdAt: serverTimestamp()
             });
             fetchHistory(); // Refresh history
@@ -193,12 +191,10 @@ export default function NexusAIPage() {
           <p className="text-stone-600 dark:text-zinc-400 max-w-2xl mx-auto text-lg">
             Upload cooperative bylaws, contracts, or meeting minutes. Our AI will analyze the document for legal risks, compliance issues, and provide actionable recommendations.
           </p>
-          {!geminiApiKey && (
-            <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-              <AlertTriangle className="h-4 w-4" />
-              Gemini is not configured in this environment.
-            </div>
-          )}
+          <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+            <Sparkles className="h-4 w-4" />
+            Analysis runs through the secured server route. Sign in to retain history.
+          </div>
         </div>
 
         <div className="bg-white dark:bg-zinc-900 rounded-3xl border border-stone-200 dark:border-zinc-800 shadow-sm p-8 mb-8 transition-colors duration-300">
@@ -295,10 +291,9 @@ export default function NexusAIPage() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="p-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-red-600 dark:text-red-400 flex items-start gap-3 mb-8"
+              className="mb-8"
             >
-              <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
-              <p className="text-sm">{error}</p>
+              <StatusNotice tone="error" message={error} />
             </motion.div>
           )}
 

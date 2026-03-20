@@ -10,8 +10,9 @@ export async function POST(request: Request) {
     }
 
     const token = authHeader.split('Bearer ')[1];
+    let decodedToken;
     try {
-      await adminAuth.verifyIdToken(token);
+      decodedToken = await adminAuth.verifyIdToken(token);
     } catch (error) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
@@ -22,6 +23,13 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
+      );
+    }
+
+    if (!decodedToken?.email || to !== decodedToken.email) {
+      return NextResponse.json(
+        { error: 'Notifications can only be sent to the authenticated user email.' },
+        { status: 403 }
       );
     }
 
