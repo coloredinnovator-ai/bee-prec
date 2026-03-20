@@ -43,6 +43,12 @@ service cloud.firestore {
         && (userRole(request.auth.uid) == 'admin');
     }
 
+    function isMaintenanceStaff() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && (userRole(request.auth.uid) in ['admin', 'board', 'maintenance']);
+    }
+
     function isConsultationTriage() {
       return isAdmin();
     }
@@ -91,6 +97,7 @@ service cloud.firestore {
         && (!('avatarPath' in profile) || (profile.avatarPath is string && profile.avatarPath.size() <= 1000))
         && (!('verified' in profile) || profile.verified is bool)
         && (!('verifiedAt' in profile) || profile.verifiedAt is timestamp)
+        && (!('discoverable' in profile) || profile.discoverable is bool)
         && profile.visibility in ['members', 'public']
         && profile.offlineAccessRequested is bool
         && profile.matchingOptIn is bool
@@ -241,6 +248,7 @@ service cloud.firestore {
     function isValidPost(payload) {
       return isSafeText(payload.title, 160)
         && isSafeText(payload.body, 5000)
+        && (!('category' in payload) || isSafeText(payload.category, 80))
         && isSafeText(payload.createdBy, 128)
         && isSafeText(payload.authorName, 80)
         && payload.flags is int
@@ -306,12 +314,18 @@ service cloud.firestore {
     function isValidMatch(payload) {
       return isSafeText(payload.fromUid, 128)
         && isSafeText(payload.toUid, 128)
+        && payload.fromUid != payload.toUid
         && isSafeText(payload.fromName, 80)
         && isSafeText(payload.toName, 80)
         && (!('message' in payload) || (payload.message is string && payload.message.size() <= 400))
         && payload.status in ['pending', 'accepted', 'declined']
         && payload.createdAt is timestamp
         && payload.updatedAt is timestamp;
+    }
+
+    function profileAllowsMatching(uid) {
+      return exists(/databases/$(database)/documents/profiles/$(uid))
+        && get(/databases/$(database)/documents/profiles/$(uid)).data.matchingOptIn == true;
     }
 
     function isValidResource(payload) {
@@ -350,7 +364,8 @@ service cloud.firestore {
         && isSafeText(payload.unitId, 80)
         && isSafeText(payload.reportedBy, 128)
         && payload.status in ['open', 'in-progress', 'resolved']
-        && payload.createdAt is timestamp;
+        && payload.createdAt is timestamp
+        && (!('updatedAt' in payload) || payload.updatedAt is timestamp);
     }
 
     function isValidUnit(payload) {
@@ -438,7 +453,12 @@ service cloud.firestore {
         && isSelf(uid)
         && request.resource.data.uid == request.auth.uid
         && isValidProfilePayload(request.resource.data);
-      allow read: if signedIn() || resource.data.visibility == 'public';
+      allow read: if isSelf(uid)
+        || isAdminOrBoard()
+        || (
+          resource.data.discoverable != false
+          && (signedIn() || resource.data.visibility == 'public')
+        );
       allow update: if signedIn() 
         && isValidProfilePayload(request.resource.data)
         && request.resource.data.uid == resource.data.uid
@@ -476,6 +496,7 @@ service cloud.firestore {
     match /matchRequests/{requestId} {
       allow create: if signedIn()
         && request.resource.data.fromUid == request.auth.uid
+        && profileAllowsMatching(request.resource.data.toUid)
         && isValidMatch(request.resource.data);
       allow read: if signedIn() && (
         request.auth.uid == resource.data.fromUid
@@ -614,6 +635,18 @@ service cloud.firestore {
             && request.resource.data.flags == resource.data.flags
             && request.resource.data.moderationStatus == resource.data.moderationStatus
           )
+          || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['flags', 'updatedAt'])
+            && request.resource.data.removed == resource.data.removed
+            && request.resource.data.title == resource.data.title
+            && request.resource.data.body == resource.data.body
+            && request.resource.data.category == resource.data.category
+            && request.resource.data.authorName == resource.data.authorName
+            && request.resource.data.likes == resource.data.likes
+            && request.resource.data.likedBy == resource.data.likedBy
+            && request.resource.data.moderationStatus == resource.data.moderationStatus
+            && request.resource.data.flags == resource.data.flags + 1
+          )
         );
       allow delete: if false;
     }
@@ -658,9 +691,7 @@ service cloud.firestore {
 
     match /newsletterSubscribers/{subscriberId} {
       allow create: if isValidNewsletter(request.resource.data);
-      allow update: if isValidNewsletter(request.resource.data)
-        && resource.data.emailLower == request.resource.data.emailLower
-        && request.resource.data.createdAt == resource.data.createdAt;
+      allow update: if false;
       allow read: if isAdminOrBoard();
       allow delete: if false;
     }
@@ -677,20 +708,34 @@ service cloud.firestore {
     
     match /units/{unitId} {
       allow read: if signedIn();
-      allow create: if isLawyerOrAdmin() && isValidUnit(request.resource.data);
-      allow update: if isLawyerOrAdmin() && isValidUnit(request.resource.data);
-      allow delete: if isLawyerOrAdmin();
+      allow create: if isAdminOrBoard() && isValidUnit(request.resource.data);
+      allow update: if isAdminOrBoard() && isValidUnit(request.resource.data);
+      allow delete: if isAdminOrBoard();
     }
 
     match /maintenance_tickets/{ticketId} {
-      allow read: if signedIn() && (resource.data.reportedBy == request.auth.uid || isLawyerOrAdmin() || userRole(request.auth.uid) == 'maintenance');
+      allow read: if signedIn() && (resource.data.reportedBy == request.auth.uid || isMaintenanceStaff());
       allow create: if signedIn() && request.resource.data.reportedBy == request.auth.uid && isValidMaintenanceTicket(request.resource.data);
       allow update: if signedIn() 
         && isValidMaintenanceTicket(request.resource.data)
         && request.resource.data.reportedBy == resource.data.reportedBy
         && request.resource.data.createdAt == resource.data.createdAt
-        && (resource.data.reportedBy == request.auth.uid || isLawyerOrAdmin() || userRole(request.auth.uid) == 'maintenance');
-      allow delete: if isLawyerOrAdmin();
+        && (
+          (
+            request.auth.uid == resource.data.reportedBy
+            && resource.data.status == 'open'
+            && request.resource.data.status == resource.data.status
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'unitId', 'updatedAt'])
+          )
+          || (
+            isMaintenanceStaff()
+            && request.resource.data.title == resource.data.title
+            && request.resource.data.description == resource.data.description
+            && request.resource.data.unitId == resource.data.unitId
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+          )
+        );
+      allow delete: if isMaintenanceStaff();
     }
 
     match /meeting_minutes/{minuteId} {

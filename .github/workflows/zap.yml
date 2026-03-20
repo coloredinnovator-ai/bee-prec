@@ -9,6 +9,9 @@ on:
         required: false
         default: 'https://bee-prec-site.web.app'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   zap:
     runs-on: ubuntu-latest

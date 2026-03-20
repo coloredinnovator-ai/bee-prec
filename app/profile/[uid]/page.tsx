@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { Navbar } from '@/components/Navbar';
-import { MapPin, User, Building, Briefcase, ArrowLeft } from 'lucide-react';
+import { MapPin, User, Building, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -14,7 +14,6 @@ type PublicProfile = {
   displayName?: string;
   bio?: string;
   avatarUrl?: string;
-  role?: string;
   location?: string;
   organization?: string;
   focusAreas?: string[];
@@ -126,15 +125,10 @@ export default function PublicProfilePage() {
             </div>
 
             <div className="flex-1">
-              <div className="mb-3 flex flex-wrap items-center gap-3">
+              <div className="mb-3">
                 <h1 className="text-4xl font-black uppercase tracking-tighter">
                   {displayName}
                 </h1>
-                {profile.role && (
-                  <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-700 dark:text-amber-400">
-                    {profile.role}
-                  </span>
-                )}
               </div>
 
               <div className="flex flex-wrap gap-4 text-sm text-stone-500 dark:text-zinc-400">
@@ -148,12 +142,6 @@ export default function PublicProfilePage() {
                   <span className="flex items-center gap-2">
                     <MapPin className="h-4 w-4" />
                     {profile.location}
-                  </span>
-                )}
-                {profile.role && (
-                  <span className="flex items-center gap-2">
-                    <Briefcase className="h-4 w-4" />
-                    {profile.role}
                   </span>
                 )}
               </div>
