@@ -66,13 +66,15 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      - name: Install repo dependencies
+        run: npm ci
       - name: Write/read Firestore health doc
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_NANNY_TECH }}
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
-          npm exec --yes --package=firebase-admin@13.7.0 -- node <<'SCRIPT'
+          node <<'SCRIPT'
           const admin = require('firebase-admin');
           const sa = require(process.env.GOOGLE_APPLICATION_CREDENTIALS);
           admin.initializeApp({ credential: admin.credential.cert(sa) });
