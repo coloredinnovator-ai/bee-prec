@@ -1503,7 +1503,7 @@ async function loadModerationLawyers() {
   for (const item of items) {
     const row = renderItem({
       title: `Lawyer request: ${escapeText(item.displayName || item.email || item.uid || 'Unknown')}`,
-      body: `${escapeText(item.email || '')} · code: ${escapeText(item.lawyerCodeUsed || 'none')}`,
+      body: `${escapeText(item.email || '')}`,
       meta: `uid: ${escapeText(item.uid || '')}`,
       actions: [
         {
