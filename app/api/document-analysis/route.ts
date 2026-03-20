@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
-import { adminAuth } from '@/lib/firebase-admin';
+import { adminAuth, adminDb } from '@/lib/firebase-admin';
 
 const DOCUMENT_MODEL =
   process.env.GEMINI_DOCUMENT_MODEL ||
@@ -9,12 +9,16 @@ const DOCUMENT_MODEL =
 
 const MAX_DOCUMENT_BYTES = Number(process.env.DOCUMENT_ANALYSIS_MAX_BYTES || 5 * 1024 * 1024);
 const MAX_PROMPT_LENGTH = Number(process.env.DOCUMENT_ANALYSIS_MAX_PROMPT_LENGTH || 5000);
+const RATE_LIMIT_WINDOW_MS = Number(process.env.DOCUMENT_ANALYSIS_RATE_LIMIT_WINDOW_MS || 60 * 60 * 1000);
+const RATE_LIMIT_MAX_REQUESTS = Number(process.env.DOCUMENT_ANALYSIS_RATE_LIMIT_MAX_REQUESTS || 10);
 const ALLOWED_DOCUMENT_MIME_TYPES = new Set([
   'application/pdf',
   'image/jpeg',
   'image/png',
   'text/plain',
 ]);
+
+const DOCUMENT_ANALYSIS_RATE_LIMIT_COLLECTION = '_internal_document_analysis_rate_limits';
 
 async function verifyRequiredUser(request: Request) {
   const authHeader = request.headers.get('Authorization');
@@ -31,10 +35,48 @@ async function verifyRequiredUser(request: Request) {
   }
 }
 
+async function enforceDocumentAnalysisRateLimit(userId: string) {
+  const docRef = adminDb.collection(DOCUMENT_ANALYSIS_RATE_LIMIT_COLLECTION).doc(userId);
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+
+  return adminDb.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(docRef);
+    const existing = snapshot.data();
+    const priorTimestamps = Array.isArray(existing?.timestamps) ? existing.timestamps : [];
+    const activeTimestamps = priorTimestamps
+      .filter((value: unknown) => typeof value === 'number' && value >= windowStart)
+      .sort((left: number, right: number) => left - right);
+
+    if (activeTimestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
+      const oldestActive = activeTimestamps[0];
+      const retryAfterMs = Math.max(0, oldestActive + RATE_LIMIT_WINDOW_MS - now);
+      return {
+        allowed: false,
+        retryAfterMs,
+      };
+    }
+
+    activeTimestamps.push(now);
+    transaction.set(
+      docRef,
+      {
+        timestamps: activeTimestamps,
+        updatedAt: new Date(now),
+      },
+      { merge: true }
+    );
+
+    return {
+      allowed: true,
+      retryAfterMs: 0,
+    };
+  });
+}
+
 export async function POST(request: Request) {
   try {
-    const apiKey =
-      process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json(
@@ -43,7 +85,7 @@ export async function POST(request: Request) {
       );
     }
 
-    await verifyRequiredUser(request);
+    const verifiedUser = await verifyRequiredUser(request);
 
     const { fileName, mimeType, base64Data, prompt } = await request.json();
 
@@ -112,6 +154,23 @@ Return the result in clean Markdown.`;
       return NextResponse.json(
         { error: `Prompt too long. Maximum supported prompt length is ${MAX_PROMPT_LENGTH} characters.` },
         { status: 400 }
+      );
+    }
+
+    const rateLimit = await enforceDocumentAnalysisRateLimit(verifiedUser.uid);
+    if (!rateLimit.allowed) {
+      const retryAfterSeconds = Math.max(1, Math.ceil(rateLimit.retryAfterMs / 1000));
+      return NextResponse.json(
+        {
+          error: `Rate limit exceeded. Try again in about ${retryAfterSeconds} seconds.`,
+          retryAfterSeconds,
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(retryAfterSeconds),
+          },
+        }
       );
     }
 
