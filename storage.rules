@@ -1,0 +1,84 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return request.auth.uid == uid;
+    }
+
+    function userRole(uid) {
+      return firestore.get(/databases/(default)/documents/users/$(uid)).data.role;
+    }
+
+    function isStaff() {
+      return signedIn()
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && (userRole(request.auth.uid) == 'lawyer' || userRole(request.auth.uid) == 'admin');
+    }
+
+    function profileIsPublic(uid) {
+      return firestore.exists(/databases/(default)/documents/profiles/$(uid))
+        && firestore.get(/databases/(default)/documents/profiles/$(uid)).data.visibility == 'public';
+    }
+
+    function validAttachmentUpload() {
+      return request.resource.size > 0
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType in [
+          'image/jpeg',
+          'image/png',
+          'image/webp',
+          'application/pdf',
+          'text/plain',
+          'text/csv',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ];
+    }
+
+    function validProfileUpload() {
+      return request.resource.size > 0
+        && request.resource.size <= 2 * 1024 * 1024
+        && request.resource.contentType in [
+          'image/jpeg',
+          'image/png',
+          'image/webp'
+        ];
+    }
+
+    function validIdentityUpload() {
+      return request.resource.size > 0
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType in [
+          'image/jpeg',
+          'image/png',
+          'application/pdf'
+        ];
+    }
+
+    match /incidents/{uid}/{reportId}/{allPaths=**} {
+      allow read: if signedIn() && (isOwner(uid) || isStaff());
+      allow write: if signedIn() && isOwner(uid) && validAttachmentUpload();
+      allow delete: if signedIn() && (isOwner(uid) || isStaff());
+    }
+
+    match /profiles/{uid}/{allPaths=**} {
+      allow read: if signedIn() || profileIsPublic(uid);
+      allow write: if signedIn() && isOwner(uid) && validProfileUpload();
+      allow delete: if signedIn() && (isOwner(uid) || isStaff());
+    }
+
+    match /identity/{uid}/{allPaths=**} {
+      allow read: if signedIn() && (isOwner(uid) || isStaff());
+      allow write: if signedIn() && isOwner(uid) && validIdentityUpload();
+      allow delete: if signedIn() && (isOwner(uid) || isStaff());
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

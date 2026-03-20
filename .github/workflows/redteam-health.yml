@@ -1,0 +1,50 @@
+name: Redteam Health
+on:
+  schedule:
+    - cron: '15 */4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  ping-prod-staging:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Curl prod
+        run: |
+          set -euo pipefail
+          for url in https://bee-prec-site.web.app https://bee-prec-site-staging.web.app; do
+            resp=$(curl -sS -w '\nHTTP:%{http_code}' "$url")
+            code=$(echo "$resp" | tail -n1 | sed 's/HTTP://')
+            body=$(echo "$resp" | head -n -1)
+            if [ "$code" != "200" ]; then echo "Bad status $code for $url"; exit 1; fi
+            echo "$body" | grep -q "BEE COOP" || (echo "Marker missing for $url"; exit 1)
+          done
+
+  firestore-probe:
+    needs: ping-prod-staging
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write/read probe
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_NANNY_TECH }}
+        run: |
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          npm install firebase-admin@12.1.0
+          node <<'SCRIPT'
+          const admin = require('firebase-admin');
+          const sa = require(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+          admin.initializeApp({ credential: admin.credential.cert(sa) });
+          const db = admin.firestore();
+          const ref = db.collection('healthchecks').doc('redteam');
+          const ts = admin.firestore.Timestamp.now();
+          async function run(){
+            await ref.set({ updatedAt: ts, msg: 'redteam', ok: true }, { merge: true });
+            const snap = await ref.get();
+            if (!snap.exists) throw new Error('health doc missing');
+          }
+          run().then(()=>process.exit(0)).catch((e)=>{console.error(e); process.exit(1);});
+          SCRIPT

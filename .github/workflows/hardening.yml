@@ -1,0 +1,97 @@
+name: BEE COOP Hardening
+
+on:
+  push:
+    branches: [main, MAROON-staging]
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  playwright-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Playwright
+        run: |
+          npm install playwright@1.41.2
+          npx playwright install --with-deps chromium
+      - name: Smoke prod/staging
+        env:
+          PROD_URL: https://bee-prec-site.web.app
+          STAGE_URL: https://bee-prec-site-staging.web.app
+        run: |
+          node <<'SCRIPT'
+          const { chromium } = require('playwright');
+          const urls = [process.env.PROD_URL, process.env.STAGE_URL];
+          (async() => {
+            const browser = await chromium.launch({ headless: true });
+            const context = await browser.newContext({ ignoreHTTPSErrors: true });
+            for (const url of urls) {
+              const page = await context.newPage();
+              await page.goto(url, { waitUntil: 'networkidle', timeout: 45000 });
+              await page.waitForTimeout(1000);
+              const text = await page.textContent('body');
+              if (!text || !text.includes('BEE COOP')) throw new Error(`Missing marker on ${url}`);
+              await page.click('text=Clinic', { timeout: 5000 }).catch(() => {});
+              await page.waitForTimeout(500);
+              await page.screenshot({ path: `smoke-${url.includes('staging') ? 'staging' : 'prod'}.png`, fullPage: true });
+            }
+            await browser.close();
+          })().catch((err) => { console.error(err); process.exit(1); });
+          SCRIPT
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-screens
+          path: smoke-*.png
+
+  firestore-health:
+    needs: playwright-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Write/read Firestore health doc
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_NANNY_TECH }}
+        run: |
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          npm install firebase-admin@12.1.0
+          node <<'SCRIPT'
+          const admin = require('firebase-admin');
+          const sa = require(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+          admin.initializeApp({ credential: admin.credential.cert(sa) });
+          const db = admin.firestore();
+          const ref = db.collection('healthchecks').doc('automation');
+          const now = admin.firestore.Timestamp.now();
+          async function run() {
+            await ref.set({ updatedAt: now, msg: 'hardening', ok: true }, { merge: true });
+            const snap = await ref.get();
+            if (!snap.exists) throw new Error('Health doc missing');
+          }
+          run().then(()=>process.exit(0)).catch((e)=>{console.error(e); process.exit(1);});
+          SCRIPT
+
+  uptime-curl:
+    needs: playwright-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Curl prod
+        run: |
+          set -euo pipefail
+          resp=$(curl -sS -w '\nHTTP:%{http_code}' https://bee-prec-site.web.app)
+          code=$(echo "$resp" | tail -n1 | sed 's/HTTP://')
+          body=$(echo "$resp" | head -n -1)
+          if [ "$code" != "200" ]; then echo "Bad status $code"; exit 1; fi
+          echo "$body" | grep -q "BEE COOP" || (echo "Marker missing"; exit 1)

@@ -1,0 +1,40 @@
+name: BEE COOP production smoke checks
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      targetUrl:
+        description: URL to validate
+        required: false
+        default: https://bee-prec-site.web.app
+      requireText:
+        description: Required text on homepage
+        required: false
+        default: BEE COOP
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Validate homepage
+        env:
+          TARGET_URL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.targetUrl || 'https://bee-prec-site.web.app' }}
+          REQUIRE_TEXT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.requireText || 'BEE COOP' }}
+        run: |
+          set -euo pipefail
+          echo "Testing ${TARGET_URL}"
+          response="$(curl --silent --show-error --location --max-time 20 --write-out 'HTTP_STATUS:%{http_code}' --output /tmp/bee-prec-home.html "${TARGET_URL}")"
+          status="$(printf '%s' "${response}" | tr ';' '\n' | grep -i '^HTTP_STATUS:' | awk -F: '{print $2}')"
+          if [[ "${status}" != "200" ]]; then
+            echo "ERROR: Expected HTTP 200, got ${status}"
+            exit 1
+          fi
+          if ! grep -q "${REQUIRE_TEXT}" /tmp/bee-prec-home.html; then
+            echo "ERROR: Required page text '${REQUIRE_TEXT}' not found."
+            exit 1
+          fi
+          echo "Smoke check passed for ${TARGET_URL}"
