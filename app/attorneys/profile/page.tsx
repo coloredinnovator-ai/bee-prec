@@ -389,7 +389,7 @@ export default function AttorneyProfileEditor() {
               ))}
               {services.length === 0 && !isEditingService && (
                 <div className="text-center py-12 border border-dashed border-zinc-800 rounded-2xl">
-                  <p className="text-zinc-500 text-sm">You haven't added any services yet.</p>
+                  <p className="text-zinc-500 text-sm">You haven&apos;t added any services yet.</p>
                 </div>
               )}
             </div>

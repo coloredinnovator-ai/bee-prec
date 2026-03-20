@@ -161,7 +161,7 @@ export default function AttorneyProfilePage() {
                 {attorney.testimonials.map((test: any, i: number) => (
                   <div key={i} className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 relative">
                     <Star className="absolute top-6 right-6 h-8 w-8 text-zinc-800/50" />
-                    <p className="text-zinc-300 italic mb-4 relative z-10">"{test.quote}"</p>
+                    <p className="text-zinc-300 italic mb-4 relative z-10">&quot;{test.quote}&quot;</p>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-yellow-500">— {test.author}</p>
                   </div>
                 ))}
@@ -197,7 +197,7 @@ export default function AttorneyProfilePage() {
           <div className="bg-yellow-500 rounded-3xl p-6 text-zinc-950">
             <h3 className="font-black uppercase tracking-tighter text-xl mb-2">Request Consultation</h3>
             <p className="text-sm font-medium mb-6 opacity-90">
-              Connect with {attorney.name} to discuss your cooperative's legal needs.
+              Connect with {attorney.name} to discuss your cooperative&apos;s legal needs.
             </p>
             <Link 
               href={`/legal?attorney=${attorney.id}`}

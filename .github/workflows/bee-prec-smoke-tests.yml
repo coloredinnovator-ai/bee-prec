@@ -1,4 +1,4 @@
-name: BEE COOP production smoke checks
+name: BEE COOP static production smoke checks
 
 on:
   schedule:

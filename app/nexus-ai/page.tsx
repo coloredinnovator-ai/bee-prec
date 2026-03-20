@@ -11,10 +11,9 @@ import ReactMarkdown from 'react-markdown';
 import { collection, addDoc, query, where, orderBy, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/firebase';
 
-const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY });
-
 export default function NexusAIPage() {
   const { user } = useAuth();
+  const geminiApiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY?.trim() ?? '';
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -97,6 +96,10 @@ export default function NexusAIPage() {
 
   const analyzeDocument = async () => {
     if (!file) return;
+    if (!geminiApiKey) {
+      setError('Nexus AI is not configured. Set NEXT_PUBLIC_GEMINI_API_KEY to enable document analysis.');
+      return;
+    }
     
     setIsAnalyzing(true);
     setError(null);
@@ -113,6 +116,7 @@ export default function NexusAIPage() {
       Format the response in clean Markdown.`;
 
       const finalPrompt = customPrompt.trim() ? customPrompt : defaultPrompt;
+      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
       const response = await ai.models.generateContent({
         model: 'gemini-3.1-pro-preview',
@@ -189,6 +193,12 @@ export default function NexusAIPage() {
           <p className="text-stone-600 dark:text-zinc-400 max-w-2xl mx-auto text-lg">
             Upload cooperative bylaws, contracts, or meeting minutes. Our AI will analyze the document for legal risks, compliance issues, and provide actionable recommendations.
           </p>
+          {!geminiApiKey && (
+            <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+              <AlertTriangle className="h-4 w-4" />
+              Gemini is not configured in this environment.
+            </div>
+          )}
         </div>
 
         <div className="bg-white dark:bg-zinc-900 rounded-3xl border border-stone-200 dark:border-zinc-800 shadow-sm p-8 mb-8 transition-colors duration-300">

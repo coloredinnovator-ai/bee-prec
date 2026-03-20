@@ -1,14 +1,21 @@
 # BEE COOP
 
-Client website repository for the BEE COOP platform. The current codebase is a Next.js 15 app backed by Firebase and GCP deployment automation.
+Client repository for the BEE COOP platform. This repo currently contains two surfaces:
+
+- `app/`: a Next.js 15 application
+- `public/`: the static Firebase Hosting site that is currently deployed
+
+The Next.js app and the static site share the same repo, but they are not the same deploy target. The Firebase workflows in this repo currently publish the `public/` site, while the Next app is validated locally and in CI.
 
 ## Local development
 
 - Prerequisites: Node.js
 - Install dependencies: `npm install`
-- Start the app: `npm run dev`
+- Start the Next app: `npm run dev`
+- Validate the Next app: `npm run validate:app`
 - Environment template: `.env.example`
-- App routes live under `app/`, shared UI under `components/`, and Firebase helpers under `lib/`
+- Next app routes live under `app/`, shared UI under `components/`, and Firebase helpers under `lib/`
+- Static Firebase Hosting assets live under `public/`
 
 ## Deployment targets
 
@@ -19,7 +26,7 @@ Client website repository for the BEE COOP platform. The current codebase is a N
 
 ## Release model
 
-GitHub Actions is the primary deployment path.
+GitHub Actions is the primary deployment path for the static site.
 
 1. Push to `main` deploys production.
 2. Push to `MAROON-staging` deploys staging.
@@ -28,6 +35,7 @@ GitHub Actions is the primary deployment path.
    - Firebase Hosting
    - Firestore rules
    - Storage rules
+5. The Next.js app is still part of the repo, but its runtime is not the current Firebase Hosting output.
 
 ## CI and operations assets
 
@@ -35,6 +43,7 @@ GitHub Actions is the primary deployment path.
 - Security scanning: CodeQL, Semgrep, ZAP, hardening, and red-team workflows in `.github/workflows/`
 - Firebase bootstrap and deployment helpers in `scripts/`
 - Product and data documentation in `docs/`
+- Use `npm run validate:app` to validate the Next.js app locally.
 
 ## Required repository settings
 
