@@ -2,14 +2,52 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { Navbar } from '@/components/Navbar';
+import { StatusNotice } from '@/components/StatusNotice';
 import { useAuth, OperationType, handleFirestoreError } from '@/components/FirebaseProvider';
-import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, doc, getDoc } from 'firebase/firestore';
-import { db } from '@/firebase';
-import { GoogleGenAI } from '@google/genai';
+import { collection, addDoc, query, where, onSnapshot, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '@/firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { Shield, Send, Bot, Clock, CheckCircle2, AlertCircle, Scale, User } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useSearchParams } from 'next/navigation';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+
+const MAX_SUBJECT_LENGTH = 160;
+const MAX_MESSAGE_LENGTH = 5000;
+
+function buildLegalAssistNotice(status: number, payload: any) {
+  if (status === 401) {
+    return {
+      tone: 'info' as const,
+      message: payload?.error || 'Sign in again before requesting AI legal guidance.',
+    };
+  }
+
+  if (status === 429) {
+    const retryAfterSeconds =
+      Number(payload?.retryAfterSeconds) > 0 ? Number(payload.retryAfterSeconds) : null;
+    return {
+      tone: 'info' as const,
+      message:
+        retryAfterSeconds != null
+          ? `Nexus AI is rate limited for your account. Try again in about ${retryAfterSeconds} seconds.`
+          : payload?.error || 'Nexus AI is temporarily rate limited. Try again shortly.',
+    };
+  }
+
+  if (status === 503) {
+    return {
+      tone: 'info' as const,
+      message:
+        'AI legal guidance is temporarily unavailable on the server. You can still request a direct attorney consultation.',
+    };
+  }
+
+  return {
+    tone: 'error' as const,
+    message: payload?.error || 'Failed to generate legal guidance.',
+  };
+}
 
 function LegalPageContent() {
   const { user, profile } = useAuth();
@@ -21,33 +59,71 @@ function LegalPageContent() {
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedAttorney, setSelectedAttorney] = useState<any>(null);
+  const [submissionNotice, setSubmissionNotice] = useState<{
+    tone: 'error' | 'info' | 'success';
+    message: string;
+  } | null>(null);
+  const [attorneyLookupState, setAttorneyLookupState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
+  const loweredSubmissionNotice = submissionNotice?.message?.toLowerCase() || '';
+  const noticeNeedsReconnect = Boolean(
+    loweredSubmissionNotice.includes('sign in') || loweredSubmissionNotice.includes('session')
+  );
 
   useEffect(() => {
     if (attorneyId) {
       const fetchAttorney = async () => {
+        setAttorneyLookupState('loading');
         try {
           const docRef = doc(db, 'attorneyProfiles', attorneyId);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
             setSelectedAttorney({ id: docSnap.id, ...docSnap.data() });
+            setAttorneyLookupState('ready');
+          } else {
+            setSelectedAttorney(null);
+            setAttorneyLookupState('unavailable');
           }
         } catch (error) {
           console.error("Error fetching attorney:", error);
+          setSelectedAttorney(null);
+          setAttorneyLookupState('unavailable');
         }
       };
       fetchAttorney();
+      return;
     }
+    setSelectedAttorney(null);
+    setAttorneyLookupState('idle');
   }, [attorneyId]);
+
+  const promptSignIn = async () => {
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    } catch (error) {
+      console.error('Legal connect failed:', error);
+      setSubmissionNotice({
+        tone: 'error',
+        message: 'Could not start sign-in. Use the Connect button in the header and try again.',
+      });
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
     const q = query(
       collection(db, 'consultations'),
-      where('createdBy', '==', user.uid),
-      orderBy('createdAt', 'desc')
+      where('createdBy', '==', user.uid)
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setConsultations(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const items = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a: any, b: any) => {
+          const left = a.createdAt?.toDate?.()?.getTime?.() || 0;
+          const right = b.createdAt?.toDate?.()?.getTime?.() || 0;
+          return right - left;
+        });
+
+      setConsultations(items);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'consultations');
     });
@@ -56,50 +132,116 @@ function LegalPageContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !subject || !message) return;
+    const trimmedSubject = subject.trim();
+    const trimmedMessage = message.trim();
+    if (!trimmedSubject || !trimmedMessage) return;
+    if (!user) {
+      setSubmissionNotice({
+        tone: 'info',
+        message: 'Sign in to submit a private consultation and view your consultation history.',
+      });
+      return;
+    }
+    if (trimmedSubject.length > MAX_SUBJECT_LENGTH) {
+      setSubmissionNotice({
+        tone: 'error',
+        message: `Subject is too long. Keep it under ${MAX_SUBJECT_LENGTH + 1} characters.`,
+      });
+      return;
+    }
+    if (trimmedMessage.length > MAX_MESSAGE_LENGTH) {
+      setSubmissionNotice({
+        tone: 'error',
+        message: `Your question is too long. Keep it under ${MAX_MESSAGE_LENGTH + 1} characters.`,
+      });
+      return;
+    }
     setIsSubmitting(true);
+    setSubmissionNotice(null);
 
     try {
       let aiText = '';
       if (!selectedAttorney) {
-        // 1. Get AI response first if no specific attorney is selected
-        const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY! });
-        const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: `You are a legal assistant for B-PREC (Cooperative Legal Nexus). 
-          The user is asking about a cooperative legal matter. 
-          Provide a helpful, professional, and informative response. 
-          DISCLAIMER: State clearly that this is AI-generated guidance and not official legal advice.
-          
-          Subject: ${subject}
-          Message: ${message}`,
-        });
-        aiText = response.text || "I'm sorry, I couldn't generate a response at this time.";
+        const requestLegalAssist = async (forceRefresh = false) => {
+          const token = await user.getIdToken(forceRefresh);
+          const aiResponse = await fetch('/api/legal-assist', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              subject: trimmedSubject,
+              message: trimmedMessage,
+            }),
+          });
+          const aiPayload = await aiResponse.json();
+          return { aiResponse, aiPayload };
+        };
+
+        let { aiResponse, aiPayload } = await requestLegalAssist();
+        if (aiResponse.status === 401) {
+          ({ aiResponse, aiPayload } = await requestLegalAssist(true));
+        }
+
+        if (!aiResponse.ok) {
+          setSubmissionNotice(buildLegalAssistNotice(aiResponse.status, aiPayload));
+          return;
+        }
+
+        aiText =
+          aiPayload.response ||
+          "I'm sorry, I couldn't generate a response at this time.";
       }
 
-      // 2. Save to Firestore
-      await addDoc(collection(db, 'consultations'), {
+      const clientName =
+        (profile?.displayName || user.displayName || user.email || 'Unknown').slice(0, 80);
+      const payload: Record<string, any> = {
         createdBy: user.uid,
-        clientName: profile?.displayName || user.email || 'Unknown',
-        topic: subject,
-        area: selectedAttorney ? 'Direct Attorney Consultation' : 'AI Consultation',
-        notes: message,
-        aiResponse: aiText,
-        assignedTo: selectedAttorney?.id || null,
-        assignedAttorneyName: selectedAttorney?.name || null,
-        status: 'open',
+        clientName,
+        topic: trimmedSubject,
+        area: selectedAttorney ? 'directAttorney' : 'AI Consultation',
+        consultationMode: selectedAttorney ? 'direct_attorney' : 'ai_guidance',
+        notes: trimmedMessage,
+        status: selectedAttorney ? 'attorney_review' : 'ai_responded',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         deleted: false
-      });
+      };
+
+      const preferredContact = user.email && user.email.length <= 80 ? user.email : null;
+      if (preferredContact) {
+        payload.preferredContact = preferredContact;
+      }
+      if (!selectedAttorney && aiText) {
+        payload.aiResponse = aiText;
+      }
+      if (selectedAttorney?.id) {
+        payload.assignedTo = selectedAttorney.id;
+      }
+      if (selectedAttorney?.name) {
+        payload.assignedAttorneyName = selectedAttorney.name;
+      }
+
+      await addDoc(collection(db, 'consultations'), payload);
 
       setSubject('');
       setMessage('');
-      if (selectedAttorney) {
-        alert(`Your consultation request has been sent to ${selectedAttorney.name}.`);
-      }
+      setSubmissionNotice({
+        tone: 'success',
+        message: selectedAttorney
+          ? `Your consultation request has been sent to ${selectedAttorney.name}.`
+          : 'Your AI consultation has been recorded and added to your history.',
+      });
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'consultations');
+      console.error('Consultation submission failed:', error);
+      setSubmissionNotice({
+        tone: 'error',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to submit your consultation.',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -124,6 +266,32 @@ function LegalPageContent() {
             </div>
 
             <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-xl">
+              {submissionNotice && (
+                <div className="mb-6 space-y-3">
+                  <StatusNotice
+                    tone={submissionNotice.tone}
+                    message={submissionNotice.message}
+                  />
+                  {noticeNeedsReconnect && (
+                    <button
+                      type="button"
+                      onClick={promptSignIn}
+                      className="w-full rounded-xl border border-zinc-700 px-4 py-3 text-sm font-bold uppercase tracking-widest text-zinc-100 transition-colors hover:border-yellow-500 hover:text-yellow-400"
+                    >
+                      Reconnect Account
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {attorneyLookupState === 'unavailable' && attorneyId && (
+                <StatusNotice
+                  tone="info"
+                  message="That attorney profile is unavailable or private. You can still request general AI guidance from this page."
+                  className="mb-6"
+                />
+              )}
+
               {selectedAttorney ? (
                 <div className="flex items-center gap-3 mb-6 p-3 bg-zinc-800/50 rounded-2xl border border-zinc-700">
                   <User className="h-5 w-5 text-zinc-400 shrink-0" />
@@ -150,9 +318,13 @@ function LegalPageContent() {
                     required
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
+                    maxLength={MAX_SUBJECT_LENGTH}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:outline-none focus:border-yellow-500 transition-colors"
                     placeholder="e.g., Co-op Incorporation"
                   />
+                  <p className="text-right text-[10px] font-bold uppercase tracking-widest text-zinc-600">
+                    {subject.length}/{MAX_SUBJECT_LENGTH}
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Your Question</label>
@@ -161,9 +333,13 @@ function LegalPageContent() {
                     rows={6}
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
+                    maxLength={MAX_MESSAGE_LENGTH}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:outline-none focus:border-yellow-500 transition-colors resize-none"
                     placeholder="Describe your legal concern..."
                   />
+                  <p className="text-right text-[10px] font-bold uppercase tracking-widest text-zinc-600">
+                    {message.length}/{MAX_MESSAGE_LENGTH}
+                  </p>
                 </div>
                 <button
                   disabled={isSubmitting || !user}
@@ -175,14 +351,23 @@ function LegalPageContent() {
                   ) : (
                     <>
                       <Send className="h-5 w-5" />
-                      Consult AI
+                      {selectedAttorney ? 'Request Consultation' : 'Consult AI'}
                     </>
                   )}
                 </button>
                 {!user && (
-                  <p className="text-center text-xs text-zinc-600 mt-2 uppercase font-bold tracking-widest">
-                    Please connect to consult the Nexus
-                  </p>
+                  <div className="space-y-3 pt-2">
+                    <p className="text-center text-xs text-zinc-600 uppercase font-bold tracking-widest">
+                      Sign in to submit private consultations and view your protected history
+                    </p>
+                    <button
+                      type="button"
+                      onClick={promptSignIn}
+                      className="w-full rounded-xl border border-zinc-700 px-4 py-3 text-sm font-bold uppercase tracking-widest text-zinc-100 transition-colors hover:border-yellow-500 hover:text-yellow-400"
+                    >
+                      Connect Account
+                    </button>
+                  </div>
                 )}
               </form>
             </div>
@@ -233,6 +418,32 @@ function LegalPageContent() {
                       <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">Your Inquiry</p>
                       <p className="text-zinc-400 text-sm leading-relaxed">{consult.notes || consult.message}</p>
                     </div>
+
+                    {consult.assignedAttorneyName && (
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">Assigned Attorney</p>
+                        <p className="text-zinc-300 text-sm">{consult.assignedAttorneyName}</p>
+                      </div>
+                    )}
+
+                    {consult.attorneyResponse && (
+                      <div className="space-y-3 p-6 bg-zinc-900/50 rounded-2xl border border-zinc-800">
+                        <div className="flex items-center gap-2 text-yellow-500">
+                          <Scale className="h-4 w-4" />
+                          <span className="text-[10px] font-bold uppercase tracking-widest">
+                            Attorney Response
+                          </span>
+                        </div>
+                        <div className="prose prose-invert prose-sm max-w-none text-zinc-300">
+                          <ReactMarkdown>{consult.attorneyResponse}</ReactMarkdown>
+                        </div>
+                        {consult.attorneyRespondedAt?.toDate && (
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">
+                            Responded {new Date(consult.attorneyRespondedAt.toDate()).toLocaleString()}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     
                     {consult.aiResponse && (
                       <div className="space-y-3 p-6 bg-zinc-900/50 rounded-2xl border border-zinc-800">
@@ -252,7 +463,11 @@ function LegalPageContent() {
               {consultations.length === 0 && (
                 <div className="text-center py-20 bg-zinc-900/30 rounded-3xl border border-dashed border-zinc-800">
                   <Shield className="h-12 w-12 text-zinc-700 mx-auto mb-4" />
-                  <p className="text-zinc-500">No consultations yet. Submit your first inquiry to the Nexus.</p>
+                  <p className="text-zinc-500">
+                    {user
+                      ? 'No consultations yet. Submitted consultations stay visible only to you and the assigned review team.'
+                      : 'Sign in to view your private consultation history and submit new requests.'}
+                  </p>
                 </div>
               )}
             </div>

@@ -13,10 +13,16 @@ service firebase.storage {
       return firestore.get(/databases/(default)/documents/users/$(uid)).data.role;
     }
 
-    function isStaff() {
+    function isLawyerOrAdmin() {
       return signedIn()
         && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
         && (userRole(request.auth.uid) == 'lawyer' || userRole(request.auth.uid) == 'admin');
+    }
+
+    function isAdminOrBoard() {
+      return signedIn()
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && (userRole(request.auth.uid) == 'admin' || userRole(request.auth.uid) == 'board');
     }
 
     function profileIsPublic(uid) {
@@ -60,21 +66,21 @@ service firebase.storage {
     }
 
     match /incidents/{uid}/{reportId}/{allPaths=**} {
-      allow read: if signedIn() && (isOwner(uid) || isStaff());
+      allow read: if signedIn() && (isOwner(uid) || isLawyerOrAdmin() || isAdminOrBoard());
       allow write: if signedIn() && isOwner(uid) && validAttachmentUpload();
-      allow delete: if signedIn() && (isOwner(uid) || isStaff());
+      allow delete: if signedIn() && (isOwner(uid) || isLawyerOrAdmin() || isAdminOrBoard());
     }
 
     match /profiles/{uid}/{allPaths=**} {
       allow read: if signedIn() || profileIsPublic(uid);
       allow write: if signedIn() && isOwner(uid) && validProfileUpload();
-      allow delete: if signedIn() && (isOwner(uid) || isStaff());
+      allow delete: if signedIn() && (isOwner(uid) || isAdminOrBoard());
     }
 
     match /identity/{uid}/{allPaths=**} {
-      allow read: if signedIn() && (isOwner(uid) || isStaff());
+      allow read: if signedIn() && (isOwner(uid) || isAdminOrBoard());
       allow write: if signedIn() && isOwner(uid) && validIdentityUpload();
-      allow delete: if signedIn() && (isOwner(uid) || isStaff());
+      allow delete: if signedIn() && (isOwner(uid) || isAdminOrBoard());
     }
 
     match /{allPaths=**} {

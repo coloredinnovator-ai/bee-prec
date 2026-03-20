@@ -54,8 +54,7 @@ const state = {
   profilesCache: []
 };
 
-const LAWYER_CODES = new Set(['BEEPREC-LAWYER', 'BEEPREC-LAWYER-2026']);
-const ALLOWED_ROLES = ['member', 'pendingLawyer'];
+const ALLOWED_ROLES = ['member', 'pendingLawyer', 'lawyer', 'admin', 'board', 'maintenance'];
 const MAX_TEXT_LENGTH = 5000;
 const MAX_SHORT_TEXT = 120;
 const MAX_NAME_LENGTH = 80;
@@ -244,7 +243,19 @@ function showSection(sectionId) {
 }
 
 function roleIsLawyer() {
-  return state.profile && (state.profile.role === 'lawyer' || state.profile.role === 'admin');
+  return state.profile && ['lawyer', 'admin', 'board'].includes(state.profile.role);
+}
+
+function roleIsAdminOrBoard() {
+  return state.profile && ['admin', 'board'].includes(state.profile.role);
+}
+
+function roleIsConsultationTriage() {
+  return state.profile && state.profile.role === 'admin';
+}
+
+function roleCanReviewReports() {
+  return state.profile && ['admin', 'board'].includes(state.profile.role);
 }
 
 function sanitizeText(value = '', max = MAX_TEXT_LENGTH) {
@@ -300,9 +311,12 @@ function setIdentity(profile, user) {
   if (!user) {
     state.user = null;
     state.profile = null;
+    state.lawyerMode = false;
     conn.textContent = 'Public mode';
     userBadge.textContent = 'Not signed in';
     document.getElementById('logoutBtn').disabled = true;
+    document.getElementById('moderationTab').hidden = true;
+    syncProtectedPortalUi();
     return;
   }
   state.user = user;
@@ -312,10 +326,63 @@ function setIdentity(profile, user) {
   userBadge.textContent = `${user.email} (${profile?.role || 'member'})`;
   document.getElementById('logoutBtn').disabled = false;
   document.getElementById('moderationTab').hidden = !state.lawyerMode;
+  syncProtectedPortalUi();
 }
 
 function clearList(elm) {
   if (elm) elm.innerHTML = '';
+}
+
+function setConsultationStatus(message) {
+  const node = el('consultationStatus');
+  if (node) node.textContent = message;
+}
+
+function setReportStatus(message) {
+  const node = el('reportStatus');
+  if (node) node.textContent = message;
+}
+
+function setProtectedFormDisabled(formId, disabled) {
+  const form = el(formId);
+  if (!form) return;
+  form.querySelectorAll('input, select, textarea, button').forEach((field) => {
+    field.disabled = disabled;
+  });
+}
+
+function explainPortalAccessIssue(error, fallback, authFallback) {
+  const code = String(error?.code || '').toLowerCase();
+  if (code.includes('permission-denied')) return authFallback;
+  if (code.includes('unauthenticated')) return 'Sign in to continue.';
+  return fallback;
+}
+
+function syncProtectedPortalUi() {
+  const signedIn = !!state.user;
+  setProtectedFormDisabled('consultationForm', !signedIn);
+  setProtectedFormDisabled('reportForm', !signedIn);
+
+  const consultSubmitBtn = el('consultSubmitBtn');
+  if (consultSubmitBtn) {
+    consultSubmitBtn.textContent = signedIn ? 'Submit request' : 'Sign in to submit';
+  }
+
+  const reportSubmitBtn = el('reportSubmitBtn');
+  if (reportSubmitBtn) {
+    reportSubmitBtn.textContent = signedIn ? 'Submit report' : 'Sign in to submit';
+  }
+
+  setConsultationStatus(
+    signedIn
+      ? 'Consultations remain visible only to you and the triage team.'
+      : 'Sign in from the dashboard to request a private consultation. Requests remain visible only to you and the triage team.'
+  );
+  setReportStatus(
+    signedIn
+      ? 'Reports remain visible only to you and authorized reviewers.'
+      : 'Sign in from the dashboard to file a private report. Reports remain visible only to you and authorized reviewers.'
+  );
 }
 
 async function tryUploadAttachment(file, reportId, reportedBy) {
@@ -407,6 +474,21 @@ function escapeText(v) {
         return '&#39;';
     }
   });
+}
+
+function safeExternalUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'https:') return null;
+    if (!['firebasestorage.googleapis.com', 'storage.googleapis.com'].includes(parsed.hostname)) {
+      return null;
+    }
+    return parsed.toString();
+  } catch (_error) {
+    return null;
+  }
 }
 
 function setFormLoading(formId, loading) {
@@ -971,104 +1053,195 @@ async function submitConnectionRequest(event) {
 }
 async function loadConsultations() {
   clearList(el('consultList'));
-  const snap = await getDocs(query(collection(db, 'consultations'), orderBy('createdAt', 'desc')));
-  const all = snap.docs
-    .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
-    .filter((item) => !item.deleted);
-  const list = state.lawyerMode ? all : all.filter((x) => x.createdBy === state.user.uid);
-  if (!list.length) {
-    clearList(el('consultList'));
-    el('consultList').innerHTML = '<p class="muted">No consultation entries yet.</p>';
-    return;
+  if (!state.user) {
+    el('consultList').innerHTML = '<p class="muted">Sign in to view your private consultation requests.</p>';
+    return false;
   }
-  clearList(el('consultList'));
-  for (const item of list) {
-    const created = toDate(item.createdAt)?.toLocaleString() || 'N/A';
-    const body = `${escapeText(item.notes || '')}`;
-    const listItem = renderItem({
-      title: `${escapeText(item.topic || 'Consultation')} (${escapeText(item.area || 'uncategorized')})`,
-      body,
-      meta: `Requested by ${escapeText(item.clientName || item.createdBy)} · ${escapeText(item.status || 'open')} · ${created}`,
-      actions: [
-        state.lawyerMode
-          ? {
-              label: item.status === 'closed' ? 'Reopen' : 'Close',
-              onClick: async () => {
-                await updateDoc(doc(db, 'consultations', item.id), {
-                  status: item.status === 'closed' ? 'open' : 'closed',
-                  updatedAt: serverTimestamp()
-                });
-                await loadConsultations();
-                if (state.lawyerMode) await loadModerationConsults();
-              }
-            }
-          : {
-              label: 'Delete',
-              onClick: async () => {
-                await updateDoc(doc(db, 'consultations', item.id), { deleted: true, deletedAt: serverTimestamp() });
-                await loadConsultations();
-              }
-            }
-      ]
+  let list = [];
+  try {
+    if (roleIsConsultationTriage()) {
+      const snap = await getDocs(query(collection(db, 'consultations'), orderBy('createdAt', 'desc')));
+      list = snap.docs
+        .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
+        .filter((item) => !item.deleted);
+    } else {
+      const snapshots = await Promise.all([
+        getDocs(query(collection(db, 'consultations'), where('createdBy', '==', state.user.uid))),
+        state.profile?.role === 'lawyer'
+          ? getDocs(query(collection(db, 'consultations'), where('assignedTo', '==', state.user.uid)))
+          : Promise.resolve(null)
+      ]);
+      const byId = new Map();
+      snapshots
+        .filter(Boolean)
+        .forEach((snap) => {
+          snap.docs.forEach((docItem) => {
+            const item = { id: docItem.id, ...docItem.data() };
+            if (!item.deleted) byId.set(item.id, item);
+          });
+        });
+      list = Array.from(byId.values());
+    }
+
+    list = list.sort((a, b) => {
+      const ta = toDate(a.createdAt)?.getTime() || 0;
+      const tb = toDate(b.createdAt)?.getTime() || 0;
+      return tb - ta;
     });
-    el('consultList').appendChild(listItem);
+
+    if (!list.length) {
+      clearList(el('consultList'));
+      el('consultList').innerHTML = '<p class="muted">No consultation requests yet. Submitted requests remain visible only to you and the triage team.</p>';
+      return true;
+    }
+    clearList(el('consultList'));
+    for (const item of list) {
+      const created = toDate(item.createdAt)?.toLocaleString() || 'N/A';
+      const body = `${escapeText(item.notes || '')}`;
+      const canManageConsultation =
+        roleIsConsultationTriage() || item.assignedTo === state.user.uid;
+      const canArchiveConsultation =
+        item.createdBy === state.user.uid && (!item.assignedTo || item.status === 'closed');
+      const actions = [];
+      if (canManageConsultation) {
+        actions.push({
+          label: item.status === 'closed' ? 'Reopen' : 'Close',
+          onClick: async () => {
+            await updateDoc(doc(db, 'consultations', item.id), {
+              status: item.status === 'closed' ? 'open' : 'closed',
+              updatedAt: serverTimestamp()
+            });
+            await loadConsultations();
+            if (roleIsConsultationTriage()) await loadModerationConsults();
+          }
+        });
+      } else if (canArchiveConsultation) {
+        actions.push({
+          label: 'Delete',
+          onClick: async () => {
+            await updateDoc(doc(db, 'consultations', item.id), {
+              deleted: true,
+              updatedAt: serverTimestamp()
+            });
+            await loadConsultations();
+          }
+        });
+      }
+      const listItem = renderItem({
+        title: `${escapeText(item.topic || 'Consultation')} (${escapeText(item.area || 'uncategorized')})`,
+        body,
+        meta: `Requested by ${escapeText(item.clientName || item.createdBy)} · ${escapeText(item.status || 'open')} · ${created}`,
+        actions
+      });
+      el('consultList').appendChild(listItem);
+    }
+    return true;
+  } catch (error) {
+    console.error('Failed to load consultations:', error);
+    el('consultList').innerHTML = `<p class="muted">${escapeText(
+      explainPortalAccessIssue(
+        error,
+        'Could not load consultations right now.',
+        'Your consultation history is private to your account and the triage team. Sign in with the correct account to view it.'
+      )
+    )}</p>`;
+    return false;
   }
 }
 
 async function loadReports() {
   clearList(el('reportList'));
-  const snap = await getDocs(query(collection(db, 'incidentReports'), orderBy('createdAt', 'desc')));
-  const all = snap.docs
-    .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
-    .filter((item) => !item.deleted);
-  const list = state.lawyerMode ? all : all.filter((x) => x.reportedBy === state.user.uid);
-  if (!list.length) {
-    el('reportList').innerHTML = '<p class="muted">No reports to show yet.</p>';
-    return;
+  if (!state.user) {
+    el('reportList').innerHTML = '<p class="muted">Sign in to view your private incident reports.</p>';
+    return false;
   }
-  clearList(el('reportList'));
-  for (const item of list) {
-    const alias = item.anonymous ? 'Anonymous' : item.reporterAlias || state.user.email;
-    const business = item.businessName ? ` · ${escapeText(item.businessName)}` : '';
-    const location = item.location ? ` · ${escapeText(item.location)}` : '';
-    const created = toDate(item.occurredAt)?.toLocaleString() || 'N/A';
-    const attachment = item.attachmentUrl
-      ? `<a href="${escapeText(item.attachmentUrl)}" target="_blank" rel="noreferrer">attachment</a>`
-      : 'no attachment';
-    const listItem = renderItem({
-      title: `${escapeText(item.title || 'Incident report')} · ${escapeText(item.category || 'uncategorized')}`,
-      body: `${escapeText(item.body || '')}<br/>${escapeText(alias || '')} · Attachment: ${attachment}`,
-      meta: `Priority: ${escapeText(item.priority || 'medium')}${business}${location} · status: ${escapeText(item.status || 'open')} · ${created}`,
-      actions: state.lawyerMode
-        ? [
-            {
-              label: 'Set reviewing',
-              onClick: async () => {
-                await updateDoc(doc(db, 'incidentReports', item.id), { status: 'reviewing', updatedAt: serverTimestamp() });
-                await loadReports();
-                await loadModerationReports();
+  try {
+    const reportQuery = roleCanReviewReports()
+      ? query(collection(db, 'incidentReports'), orderBy('createdAt', 'desc'))
+      : query(collection(db, 'incidentReports'), where('reportedBy', '==', state.user.uid));
+    const snap = await getDocs(reportQuery);
+    const all = snap.docs
+      .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
+      .filter((item) => !item.deleted)
+      .sort((a, b) => {
+        const ta = toDate(a.createdAt)?.getTime() || 0;
+        const tb = toDate(b.createdAt)?.getTime() || 0;
+        return tb - ta;
+      });
+    const list = roleCanReviewReports() ? all : all.filter((x) => x.reportedBy === state.user.uid);
+    if (!list.length) {
+      el('reportList').innerHTML = '<p class="muted">No reports to show yet. Filed reports remain visible only to you and authorized reviewers.</p>';
+      return true;
+    }
+    clearList(el('reportList'));
+    for (const item of list) {
+      const alias = item.anonymous ? 'Anonymous' : item.reporterAlias || state.user.email;
+      const business = item.businessName ? ` · ${escapeText(item.businessName)}` : '';
+      const location = item.location ? ` · ${escapeText(item.location)}` : '';
+      const created = toDate(item.occurredAt)?.toLocaleString() || 'N/A';
+      const attachmentUrl = safeExternalUrl(item.attachmentUrl);
+      const attachment = attachmentUrl
+        ? `<a href="${escapeText(attachmentUrl)}" target="_blank" rel="noreferrer">attachment</a>`
+        : 'no attachment';
+      const listItem = renderItem({
+        title: `${escapeText(item.title || 'Incident report')} · ${escapeText(item.category || 'uncategorized')}`,
+        body: `${escapeText(item.body || '')}<br/>${escapeText(alias || '')} · Attachment: ${attachment}`,
+        meta: `Priority: ${escapeText(item.priority || 'medium')}${business}${location} · status: ${escapeText(item.status || 'open')} · ${created}`,
+        actions: roleCanReviewReports()
+          ? [
+              {
+                label: 'Set reviewing',
+                onClick: async () => {
+                  await updateDoc(doc(db, 'incidentReports', item.id), {
+                    status: 'reviewing',
+                    reviewedBy: state.user.uid,
+                    reviewedAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                  });
+                  await loadReports();
+                  await loadModerationReports();
+                }
+              },
+              {
+                label: 'Set resolved',
+                onClick: async () => {
+                  await updateDoc(doc(db, 'incidentReports', item.id), {
+                    status: 'resolved',
+                    reviewedBy: state.user.uid,
+                    reviewedAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                  });
+                  await loadReports();
+                  await loadModerationReports();
+                }
               }
-            },
-            {
-              label: 'Set resolved',
-              onClick: async () => {
-                await updateDoc(doc(db, 'incidentReports', item.id), { status: 'resolved', updatedAt: serverTimestamp() });
-                await loadReports();
-                await loadModerationReports();
+            ]
+          : [
+              {
+                label: 'Delete',
+                onClick: async () => {
+                  await updateDoc(doc(db, 'incidentReports', item.id), {
+                    deleted: true,
+                    updatedAt: serverTimestamp()
+                  });
+                  await loadReports();
+                }
               }
-            }
-          ]
-        : [
-            {
-              label: 'Delete',
-              onClick: async () => {
-                await updateDoc(doc(db, 'incidentReports', item.id), { deleted: true, deletedAt: serverTimestamp() });
-                await loadReports();
-              }
-            }
-          ]
-    });
-    el('reportList').appendChild(listItem);
+            ]
+      });
+      el('reportList').appendChild(listItem);
+    }
+    return true;
+  } catch (error) {
+    console.error('Failed to load reports:', error);
+    el('reportList').innerHTML = `<p class="muted">${escapeText(
+      explainPortalAccessIssue(
+        error,
+        'Could not load reports right now.',
+        'Your reports are private to your account and authorized reviewers. Sign in with the correct account to view them.'
+      )
+    )}</p>`;
+    return false;
   }
 }
 
@@ -1099,7 +1272,7 @@ async function loadPostComments(postId) {
       del.addEventListener('click', async () => {
         await updateDoc(doc(db, 'communityComments', c.id), {
           deleted: true,
-          deletedAt: serverTimestamp()
+          updatedAt: serverTimestamp()
         });
         await loadPosts();
       });
@@ -1112,8 +1285,22 @@ async function loadPostComments(postId) {
 
 async function loadPosts() {
   clearList(el('postFeed'));
-  const snap = await getDocs(query(collection(db, 'communityPosts'), orderBy('createdAt', 'desc')));
-  const posts = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() })).filter((p) => !p.removed);
+  const postsQuery = roleIsLawyer()
+    ? query(collection(db, 'communityPosts'), orderBy('createdAt', 'desc'))
+    : query(
+        collection(db, 'communityPosts'),
+        where('moderationStatus', '==', 'approved'),
+        where('removed', '==', false)
+      );
+  const snap = await getDocs(postsQuery);
+  const posts = snap.docs
+    .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
+    .filter((p) => !p.removed)
+    .sort((a, b) => {
+      const ta = toDate(a.createdAt)?.getTime() || 0;
+      const tb = toDate(b.createdAt)?.getTime() || 0;
+      return tb - ta;
+    });
   if (!posts.length) {
     el('postFeed').innerHTML = '<p class="muted">No posts yet.</p>';
     return;
@@ -1143,19 +1330,25 @@ async function loadPosts() {
       hideBtn.textContent = 'Hide';
       hideBtn.className = 'danger';
       hideBtn.addEventListener('click', async () => {
-        await updateDoc(doc(db, 'communityPosts', p.id), { removed: true, removedAt: serverTimestamp() });
+        await updateDoc(doc(db, 'communityPosts', p.id), {
+          removed: true,
+          updatedAt: serverTimestamp()
+        });
         await loadPosts();
         await loadModerationPosts();
       });
       row.appendChild(hideBtn);
     }
-    if (p.createdBy === state.user.uid || roleIsLawyer()) {
+    if (roleIsLawyer()) {
       const delBtn = document.createElement('button');
       delBtn.type = 'button';
       delBtn.textContent = 'Delete';
       delBtn.className = 'danger';
       delBtn.addEventListener('click', async () => {
-        await updateDoc(doc(db, 'communityPosts', p.id), { removed: true, removedAt: serverTimestamp() });
+        await updateDoc(doc(db, 'communityPosts', p.id), {
+          removed: true,
+          updatedAt: serverTimestamp()
+        });
         await loadPosts();
       });
       row.appendChild(delBtn);
@@ -1210,7 +1403,7 @@ async function loadPosts() {
 
 async function loadModerationConsults() {
   clearList(el('moderationConsults'));
-  if (!state.lawyerMode) return;
+  if (!roleIsConsultationTriage()) return;
   const snap = await getDocs(query(collection(db, 'consultations'), orderBy('createdAt', 'desc')));
   const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() })).filter((x) => !x.deleted);
   if (!items.length) {
@@ -1240,7 +1433,7 @@ async function loadModerationConsults() {
 
 async function loadModerationReports() {
   clearList(el('moderationReports'));
-  if (!state.lawyerMode) return;
+  if (!roleCanReviewReports()) return;
   const snap = await getDocs(query(collection(db, 'incidentReports'), orderBy('createdAt', 'desc')));
   const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() })).filter((x) => !x.deleted);
   if (!items.length) {
@@ -1302,7 +1495,10 @@ async function loadModerationPosts() {
           label: 'Hide',
           className: 'danger',
           onClick: async () => {
-            await updateDoc(doc(db, 'communityPosts', item.id), { removed: true, removedAt: serverTimestamp() });
+            await updateDoc(doc(db, 'communityPosts', item.id), {
+              removed: true,
+              updatedAt: serverTimestamp()
+            });
             await loadModerationPosts();
             await loadPosts();
           }
@@ -1316,6 +1512,10 @@ async function loadModerationPosts() {
 async function loadModerationLawyers() {
   clearList(el('moderationLawyers'));
   if (!state.lawyerMode) return;
+  if (state.profile?.role !== 'admin') {
+    el('moderationLawyers').innerHTML = '<p class="muted">Only admins can approve lawyer access requests.</p>';
+    return;
+  }
   const snap = await getDocs(query(collection(db, 'users'), where('role', '==', 'pendingLawyer'), orderBy('createdAt', 'desc')));
   const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
   if (!items.length) {
@@ -1325,7 +1525,7 @@ async function loadModerationLawyers() {
   for (const item of items) {
     const row = renderItem({
       title: `Lawyer request: ${escapeText(item.displayName || item.email || item.uid || 'Unknown')}`,
-      body: `${escapeText(item.email || '')} · code: ${escapeText(item.lawyerCodeUsed || 'none')}`,
+      body: `${escapeText(item.email || '')}`,
       meta: `uid: ${escapeText(item.uid || '')}`,
       actions: [
         {
@@ -1365,6 +1565,10 @@ async function loadModerationLawyers() {
 async function loadModerationDeletionRequests() {
   clearList(el('moderationDeletionRequests'));
   if (!state.lawyerMode) return;
+  if (!roleIsAdminOrBoard()) {
+    el('moderationDeletionRequests').innerHTML = '<p class="muted">Only admins and board reviewers can manage account deletion requests.</p>';
+    return;
+  }
   const snap = await getDocs(query(collection(db, 'deletionRequests'), orderBy('requestedAt', 'desc')));
   const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
   if (!items.length) {
@@ -1387,13 +1591,11 @@ async function loadModerationDeletionRequests() {
                   status: 'approved',
                   reviewedAt: serverTimestamp(),
                   reviewedBy: state.user.uid,
-                  reviewedByName: sanitizeText(state.profile?.displayName || state.user.email, MAX_NAME_LENGTH),
+                  updatedBy: state.user.uid,
                   updatedAt: serverTimestamp()
                 });
                 await updateDoc(doc(db, 'users', item.requesterId), {
                   deleted: true,
-                  deletedAt: serverTimestamp(),
-                  deletedReason: sanitizeText(item.reason || '', MAX_REASON_LENGTH),
                   updatedAt: serverTimestamp()
                 });
                 await loadModerationDeletionRequests();
@@ -1423,6 +1625,10 @@ async function loadModerationDeletionRequests() {
 async function loadModerationNewsletter() {
   clearList(el('moderationNewsletter'));
   if (!state.lawyerMode) return;
+  if (!roleIsAdminOrBoard()) {
+    el('moderationNewsletter').innerHTML = '<p class="muted">Only admins and board reviewers can view newsletter submissions.</p>';
+    return;
+  }
   const snap = await getDocs(query(collection(db, 'newsletterSubscribers'), orderBy('createdAt', 'desc')));
   const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
   if (!items.length) {
@@ -1443,6 +1649,10 @@ async function loadModerationNewsletter() {
 async function loadModerationClinic() {
   clearList(el('moderationClinic'));
   if (!state.lawyerMode) return;
+  if (!roleIsAdminOrBoard()) {
+    el('moderationClinic').innerHTML = '<p class="muted">Only admins and board reviewers can view clinic submissions.</p>';
+    return;
+  }
   const snap = await getDocs(query(collection(db, 'clinicSignups'), orderBy('createdAt', 'desc')));
   const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
   if (!items.length) {
@@ -1463,6 +1673,10 @@ async function loadModerationClinic() {
 async function loadModerationIdentity() {
   clearList(el('moderationIdentity'));
   if (!state.lawyerMode) return;
+  if (!roleIsAdminOrBoard()) {
+    el('moderationIdentity').innerHTML = '<p class="muted">Only admins and board reviewers can access identity verification records.</p>';
+    return;
+  }
   const snap = await getDocs(query(collection(db, 'identityVerifications'), orderBy('submittedAt', 'desc')));
   const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
   if (!items.length) {
@@ -1524,6 +1738,10 @@ async function loadModerationIdentity() {
 async function loadModerationMatches() {
   clearList(el('moderationMatches'));
   if (!state.lawyerMode) return;
+  if (!roleIsAdminOrBoard()) {
+    el('moderationMatches').innerHTML = '<p class="muted">Only admins and board reviewers can view platform-wide connection requests.</p>';
+    return;
+  }
   const snap = await getDocs(query(collection(db, 'matchRequests'), orderBy('createdAt', 'desc')));
   const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
   if (!items.length) {
@@ -1613,17 +1831,22 @@ async function loadDashboardData() {
   if (!state.user) return;
   await Promise.all([loadConsultations(), loadReports(), loadPosts()]);
   if (state.lawyerMode) {
-    await Promise.all([
+    const reviewTasks = [
       loadModerationConsults(),
       loadModerationReports(),
       loadModerationPosts(),
-      loadModerationLawyers(),
-      loadModerationDeletionRequests(),
-      loadModerationNewsletter(),
-      loadModerationClinic(),
-      loadModerationIdentity(),
-      loadModerationMatches()
-    ]);
+      loadModerationLawyers()
+    ];
+    if (roleIsAdminOrBoard()) {
+      reviewTasks.push(
+        loadModerationDeletionRequests(),
+        loadModerationNewsletter(),
+        loadModerationClinic(),
+        loadModerationIdentity(),
+        loadModerationMatches()
+      );
+    }
+    await Promise.all(reviewTasks);
   }
 }
 
@@ -1638,10 +1861,13 @@ async function deleteCurrentUserContent() {
   for (const [colRef, key] of toArchive) {
     const snap = await getDocs(query(colRef, where(key, '==', uid)));
     for (const d of snap.docs) {
-      await updateDoc(d.ref, { deleted: true, deletedAt: serverTimestamp() });
+      const archivePayload = d.ref.parent.id === 'communityPosts'
+        ? { removed: true, updatedAt: serverTimestamp() }
+        : { deleted: true, updatedAt: serverTimestamp() };
+      await updateDoc(d.ref, archivePayload);
     }
   }
-  await updateDoc(doc(db, 'users', uid), { deleted: true, deletedAt: serverTimestamp() });
+  await updateDoc(doc(db, 'users', uid), { deleted: true, updatedAt: serverTimestamp() });
 }
 
 async function setupEventHandlers() {
@@ -1672,11 +1898,13 @@ async function setupEventHandlers() {
         loadModerationReports();
         loadModerationPosts();
         loadModerationLawyers();
-        loadModerationDeletionRequests();
-        loadModerationIdentity();
-        loadModerationMatches();
-        loadModerationNewsletter();
-        loadModerationClinic();
+        if (roleIsAdminOrBoard()) {
+          loadModerationDeletionRequests();
+          loadModerationIdentity();
+          loadModerationMatches();
+          loadModerationNewsletter();
+          loadModerationClinic();
+        }
       }
     });
   });
@@ -1688,13 +1916,8 @@ async function setupEventHandlers() {
     const email = el('regEmail').value.trim();
     const password = el('regPassword').value;
     const role = el('regRole').value;
-    const lawyerCode = el('regLawyerCode').value.trim();
     if (!displayName || !email || !password) return showToast('Please complete all required fields.');
     if (password.length < 8) return showToast('Password must be at least 8 characters.');
-    if (role === 'lawyer' && !LAWYER_CODES.has(lawyerCode)) {
-      showToast('Invalid lawyer code.');
-      return;
-    }
     state.loading = true;
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
@@ -1707,7 +1930,6 @@ async function setupEventHandlers() {
         role: isLawyer ? 'pendingLawyer' : 'member',
         requestedRole: isLawyer ? 'lawyer' : 'member',
         requiresApproval: isLawyer,
-        lawyerCodeUsed: isLawyer ? lawyerCode : null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         deleted: false
@@ -1762,7 +1984,10 @@ async function setupEventHandlers() {
   el('consultationForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (state.loading) return;
-    if (!state.user) return showToast('Sign in required');
+    if (!state.user) {
+      setConsultationStatus('Sign in from the dashboard to request a private consultation. Requests remain visible only to you and the triage team.');
+      return showToast('Sign in required');
+    }
     const topic = sanitizeText(el('consultTopic').value, MAX_SHORT_TEXT);
     const notes = sanitizeText(el('consultNotes').value, MAX_TEXT_LENGTH);
     const area = sanitizeText(el('consultArea').value, 40);
@@ -1788,9 +2013,23 @@ async function setupEventHandlers() {
         deleted: false
       });
       e.target.reset();
-      await loadConsultations();
+      const listReloaded = await loadConsultations();
       if (state.lawyerMode) await loadModerationConsults();
+      setConsultationStatus(
+        listReloaded
+          ? 'Consultation submitted. It remains visible only to you and the triage team.'
+          : 'Consultation submitted, but we could not refresh your private request list. It remains visible only to you and the triage team.'
+      );
       showToast('Consultation submitted');
+    } catch (error) {
+      console.error('Consultation submission failed:', error);
+      const message = explainPortalAccessIssue(
+        error,
+        'Could not submit your consultation right now.',
+        'Your account no longer has access to private consultation submissions. Sign in again or contact the review team.'
+      );
+      setConsultationStatus(message);
+      showToast(message, 4200);
     } finally {
       state.loading = false;
     }
@@ -1799,7 +2038,10 @@ async function setupEventHandlers() {
   el('reportForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (state.loading) return;
-    if (!state.user) return showToast('Sign in required');
+    if (!state.user) {
+      setReportStatus('Sign in from the dashboard to file a private report. Reports remain visible only to you and authorized reviewers.');
+      return showToast('Sign in required');
+    }
     const title = sanitizeText(el('reportTitle').value, MAX_SHORT_TEXT);
     const category = sanitizeText(el('reportCategory').value, 40);
     const priority = sanitizeText(el('reportPriority').value, 20);
@@ -1842,9 +2084,23 @@ async function setupEventHandlers() {
         }
       }
       e.target.reset();
-      await loadReports();
+      const listReloaded = await loadReports();
       if (state.lawyerMode) await loadModerationReports();
+      setReportStatus(
+        listReloaded
+          ? 'Report filed. It remains visible only to you and authorized reviewers.'
+          : 'Report filed, but we could not refresh your private report list. It remains visible only to you and authorized reviewers.'
+      );
       showToast('Report filed');
+    } catch (error) {
+      console.error('Report submission failed:', error);
+      const message = explainPortalAccessIssue(
+        error,
+        'Could not submit your report right now.',
+        'Your account no longer has access to private report submissions. Sign in again or contact the review team.'
+      );
+      setReportStatus(message);
+      showToast(message, 4200);
     } finally {
       state.loading = false;
     }
@@ -1985,11 +2241,16 @@ onAuthStateChanged(auth, async (user) => {
     await loadModerationReports();
     await loadModerationPosts();
     await loadModerationLawyers();
-    await loadModerationDeletionRequests();
-    await loadModerationIdentity();
-    await loadModerationMatches();
+    if (roleIsAdminOrBoard()) {
+      await loadModerationDeletionRequests();
+      await loadModerationIdentity();
+      await loadModerationMatches();
+      await loadModerationNewsletter();
+      await loadModerationClinic();
+    }
   }
 });
 
 await setupEventHandlers();
+syncProtectedPortalUi();
 showSection('dashboard');

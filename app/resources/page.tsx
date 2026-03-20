@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { Navbar } from '@/components/Navbar';
+import { StatusNotice } from '@/components/StatusNotice';
 import { useAuth, OperationType, handleFirestoreError } from '@/components/FirebaseProvider';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { Package, Plus, Search, Filter, Hammer, Building, GraduationCap, Coins, MapPin } from 'lucide-react';
@@ -15,23 +16,40 @@ export default function ResourcesPage() {
   const [newResource, setNewResource] = useState({ title: '', description: '', type: 'tool', category: '' });
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [requestingResource, setRequestingResource] = useState<any | null>(null);
+  const [requestMessage, setRequestMessage] = useState('');
+  const [isRequesting, setIsRequesting] = useState(false);
+  const [notice, setNotice] = useState<{
+    tone: 'error' | 'info' | 'success';
+    message: string;
+  } | null>(null);
 
   useEffect(() => {
-    if (!user) {
-      return;
-    }
-    const q = query(collection(db, 'resources'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'resources'), where('moderationStatus', '==', 'approved'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setResources(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const items = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a: any, b: any) => {
+          const left = a.createdAt?.toDate?.()?.getTime?.() || 0;
+          const right = b.createdAt?.toDate?.()?.getTime?.() || 0;
+          return right - left;
+        });
+      setResources(items);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'resources');
     });
     return () => unsubscribe();
-  }, [user]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user) {
+      setNotice({
+        tone: 'info',
+        message: 'Connect your account to share a resource with the network.',
+      });
+      return;
+    }
     try {
       await addDoc(collection(db, 'resources'), {
         ...newResource,
@@ -41,18 +59,59 @@ export default function ResourcesPage() {
       });
       setNewResource({ title: '', description: '', type: 'tool', category: '' });
       setIsAdding(false);
+      setNotice({
+        tone: 'success',
+        message: 'Your resource was submitted for moderation.',
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'resources');
     }
   };
 
+  const handleRequestAccess = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!user || !requestingResource) {
+      setNotice({
+        tone: 'info',
+        message: 'Connect your account to request resource access.',
+      });
+      return;
+    }
+
+    try {
+      setIsRequesting(true);
+      await addDoc(collection(db, 'resourceRequests'), {
+        resourceId: requestingResource.id,
+        resourceTitle: requestingResource.title,
+        resourceType: requestingResource.type,
+        requesterId: user.uid,
+        requesterName: user.displayName || user.email || 'Anonymous Bee',
+        requesterEmail: user.email || null,
+        note: requestMessage.trim(),
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setRequestingResource(null);
+      setRequestMessage('');
+      setNotice({
+        tone: 'success',
+        message: 'Your access request has been sent to the B-PREC admin queue.',
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'resourceRequests');
+    } finally {
+      setIsRequesting(false);
+    }
+  };
+
   const filteredResources = resources.filter(r => {
-    const isApproved = r.moderationStatus === 'approved';
     const matchesFilter = filter === 'all' || r.type === filter;
     const matchesSearch = r.title?.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           r.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           r.category?.toLowerCase().includes(searchQuery.toLowerCase());
-    return isApproved && matchesFilter && matchesSearch;
+    return matchesFilter && matchesSearch;
   });
 
   const typeIcons: any = {
@@ -111,6 +170,14 @@ export default function ResourcesPage() {
             )}
           </div>
         </div>
+
+        {notice && (
+          <StatusNotice
+            tone={notice.tone}
+            message={notice.message}
+            className="mb-8"
+          />
+        )}
 
         <AnimatePresence>
           {isAdding && (
@@ -184,6 +251,62 @@ export default function ResourcesPage() {
           )}
         </AnimatePresence>
 
+        <AnimatePresence>
+          {requestingResource && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="mb-12"
+            >
+              <form
+                onSubmit={handleRequestAccess}
+                className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 space-y-6"
+              >
+                <div>
+                  <h2 className="text-2xl font-bold text-zinc-100">
+                    Request Access to {requestingResource.title}
+                  </h2>
+                  <p className="mt-2 text-sm text-zinc-500">
+                    Share what you need and the admin team can review your request.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-widest text-zinc-500">
+                    Request Note
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={requestMessage}
+                    onChange={(e) => setRequestMessage(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 focus:outline-none focus:border-yellow-500 transition-colors resize-none"
+                    placeholder="Tell the team what you need, your timing, and how you plan to use this resource."
+                  />
+                </div>
+                <div className="flex justify-end gap-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRequestingResource(null);
+                      setRequestMessage('');
+                    }}
+                    className="px-6 py-2 rounded-full text-zinc-400 hover:text-zinc-100 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isRequesting}
+                    className="px-8 py-2 rounded-full bg-yellow-500 text-zinc-950 font-bold uppercase tracking-tighter hover:bg-yellow-400 transition-all disabled:opacity-60"
+                  >
+                    {isRequesting ? 'Sending...' : 'Send Request'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredResources.map((resource) => {
             const Icon = typeIcons[resource.type] || Package;
@@ -224,8 +347,20 @@ export default function ResourcesPage() {
                     <MapPin className="h-3 w-3" />
                     B-PREC Network
                   </div>
-                  <button className="text-xs font-bold uppercase tracking-widest text-yellow-500 hover:text-yellow-400 transition-colors">
-                    Request Access
+                  <button
+                    onClick={() => {
+                      if (!user) {
+                        setNotice({
+                          tone: 'info',
+                          message: 'Connect your account to request access to shared resources.',
+                        });
+                        return;
+                      }
+                      setRequestingResource(resource);
+                    }}
+                    className="text-xs font-bold uppercase tracking-widest text-yellow-500 hover:text-yellow-400 transition-colors"
+                  >
+                    {user ? 'Request Access' : 'Connect to Request'}
                   </button>
                 </div>
               </motion.div>

@@ -150,7 +150,7 @@
               <h3>Agent workspace</h3>
               <p class="muted">Safe mode on. Actions require your approval.</p>
             </div>
-            <span class="agent-chip live">Live preview</span>
+            <span class="agent-chip live">Guided preview</span>
           </div>
           <div class="agent-chat__log">
             <div class="chat-row system">System: Consent confirmed. Moderation safeguards enabled.</div>
@@ -159,8 +159,11 @@
             <div class="chat-row agent">Pulled resources: ICA cooperative identity, USFWC legal templates, CLT financing guides.</div>
           </div>
           <div class="agent-chat__input">
-            <input type="text" value="Describe your co-op need..." aria-label="Agent input" disabled />
-            <button type="button" disabled>Queue task</button>
+            <p class="muted">This static site is the live public intake surface. Start a real clinic request or open the member portal instead of a disabled demo console.</p>
+            <div class="hero__actions">
+              <a class="cta ghost" href="#clinic">Start clinic intake</a>
+              <a class="cta text" href="#portal">Open portal</a>
+            </div>
           </div>
         </div>
 
@@ -519,6 +522,7 @@
             <h2>Consultations</h2>
             <form id="consultationForm" class="card">
               <h3>Request consultation</h3>
+              <p class="muted" id="consultationStatus">Sign in to request a private consultation. Requests remain visible only to you and the triage team.</p>
               <label>Case topic</label>
               <input id="consultTopic" required />
               <label>Consultation notes</label>
@@ -540,7 +544,7 @@
               </select>
               <label>Preferred contact method</label>
               <input id="consultContact" required placeholder="Email, phone, or platform handle" />
-              <button type="submit">Submit request</button>
+              <button id="consultSubmitBtn" type="submit">Submit request</button>
             </form>
             <div class="card">
               <h3>My requests</h3>
@@ -552,6 +556,7 @@
             <h2>Incident reports</h2>
             <form id="reportForm" class="card">
               <h3>Report business crime / community harm</h3>
+              <p class="muted" id="reportStatus">Sign in to file a private report. Reports remain visible only to you and authorized reviewers.</p>
               <label>Headline</label>
               <input id="reportTitle" required />
               <label>Category</label>
@@ -582,7 +587,7 @@
                 <input id="reportAnonymous" type="checkbox" />
                 <span>Submit anonymously</span>
               </label>
-              <button type="submit">Submit report</button>
+              <button id="reportSubmitBtn" type="submit">Submit report</button>
             </form>
             <div class="card">
               <h3>Filed reports</h3>

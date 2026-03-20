@@ -12,22 +12,42 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEPLOY_SCRIPT="${SCRIPT_DIR}/deploy_bee_prec_gcp.sh"
+ALLOW_MULTI_ENV_DEPLOY="${ALLOW_MULTI_ENV_DEPLOY:-0}"
 
 if [[ ! -x "${DEPLOY_SCRIPT}" ]]; then
   echo "Error: deploy script not found or not executable at ${DEPLOY_SCRIPT}"
   exit 1
 fi
 
-if [[ ! -d "${SCRIPT_DIR}/../${PUBLIC_DIR}" ]]; then
+if [[ "${PUBLIC_DIR}" = /* ]]; then
+  PUBLIC_DIR_PATH="${PUBLIC_DIR}"
+else
+  PUBLIC_DIR_PATH="${SCRIPT_DIR}/../${PUBLIC_DIR}"
+fi
+
+if [[ ! -d "${PUBLIC_DIR_PATH}" ]]; then
   echo "Error: public directory '${PUBLIC_DIR}' not found."
-  echo "Run from repo root or pass a relative path under the repo root."
+  echo "Pass an absolute path or a path relative to the repo root."
   exit 1
 fi
 
+if [[ "${ALLOW_MULTI_ENV_DEPLOY}" != "1" ]]; then
+  echo "Error: multi-environment deploys are disabled by default because they bypass the branch-to-environment release contract."
+  echo "Deploy production from main with:"
+  echo "  ./scripts/deploy_bee_prec_gcp.sh ${PROJECT_ID} bee-prec-site ${PUBLIC_DIR}"
+  echo "Deploy staging from MAROON-staging with:"
+  echo "  ./scripts/deploy_bee_prec_gcp.sh ${PROJECT_ID} bee-prec-site-staging ${PUBLIC_DIR}"
+  echo "Set ALLOW_MULTI_ENV_DEPLOY=1 only for an emergency override."
+  exit 1
+fi
+
+echo "WARNING: forcing production and staging deploys from one checkout."
+echo "This bypasses the normal branch/environment contract and should only be used for emergency recovery."
+
 echo "Deploying BEE COOP production..."
-"${DEPLOY_SCRIPT}" "${PROJECT_ID}" "bee-prec-site" "${PUBLIC_DIR}"
+ALLOW_BRANCH_BYPASS=1 DEPLOY_RULES=1 "${DEPLOY_SCRIPT}" "${PROJECT_ID}" "bee-prec-site" "${PUBLIC_DIR}"
 
 echo "Deploying BEE COOP staging..."
-"${DEPLOY_SCRIPT}" "${PROJECT_ID}" "bee-prec-site-staging" "${PUBLIC_DIR}"
+ALLOW_BRANCH_BYPASS=1 DEPLOY_RULES=0 "${DEPLOY_SCRIPT}" "${PROJECT_ID}" "bee-prec-site-staging" "${PUBLIC_DIR}"
 
 echo "Deployment complete for project ${PROJECT_ID}."
