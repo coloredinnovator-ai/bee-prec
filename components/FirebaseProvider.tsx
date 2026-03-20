@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '@/firebase';
@@ -10,6 +10,7 @@ interface AuthContextType {
   profile: any | null;
   loading: boolean;
   isAuthReady: boolean;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -17,6 +18,7 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   loading: true,
   isAuthReady: false,
+  refreshProfile: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -27,39 +29,86 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [loading, setLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
+  const loadProfile = useCallback(async (currentUser: User) => {
+    const userDocRef = doc(db, 'users', currentUser.uid);
+    const publicProfileRef = doc(db, 'profiles', currentUser.uid);
+
+    const [userDoc, publicProfileDoc] = await Promise.all([
+      getDoc(userDocRef),
+      getDoc(publicProfileRef),
+    ]);
+
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      const publicProfileData = publicProfileDoc.exists() ? publicProfileDoc.data() : {};
+      setProfile({
+        ...userData,
+        ...publicProfileData,
+        role: userData.role,
+        email: userData.email,
+        requestedRole: userData.requestedRole,
+        requiresApproval: userData.requiresApproval,
+        lawyerCodeUsed: userData.lawyerCodeUsed,
+        approvedBy: userData.approvedBy,
+        approvedAt: userData.approvedAt,
+        rejectedBy: userData.rejectedBy,
+        rejectedAt: userData.rejectedAt,
+        deleted: userData.deleted,
+      });
+      return;
+    }
+
+    const newProfile = {
+      uid: currentUser.uid,
+      displayName: currentUser.displayName || 'Anonymous Bee',
+      email: currentUser.email,
+      photoURL: currentUser.photoURL,
+      role: 'member',
+      requestedRole: 'member',
+      requiresApproval: false,
+      lawyerCodeUsed: null,
+      approvedBy: null,
+      approvedAt: null,
+      rejectedBy: null,
+      rejectedAt: null,
+      deleted: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const firestoreProfile = {
+      ...newProfile,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    await setDoc(userDocRef, firestoreProfile);
+    setProfile({
+      ...newProfile,
+      ...(publicProfileDoc.exists() ? publicProfileDoc.data() : {}),
+      createdAt: { toDate: () => new Date() },
+      updatedAt: { toDate: () => new Date() },
+    });
+  }, []);
+
+  const refreshProfile = useCallback(async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      setProfile(null);
+      return;
+    }
+
+    try {
+      await loadProfile(currentUser);
+    } catch (error) {
+      console.error('Error refreshing user profile:', error);
+    }
+  }, [loadProfile]);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
       if (user) {
-        // Check if profile exists, if not create it
-        const userDocRef = doc(db, 'users', user.uid);
         try {
-          const userDoc = await getDoc(userDocRef);
-          if (userDoc.exists()) {
-            setProfile(userDoc.data());
-          } else {
-            const newProfile = {
-              uid: user.uid,
-              displayName: user.displayName || 'Anonymous Bee',
-              email: user.email,
-              photoURL: user.photoURL,
-              role: 'member',
-              deleted: false,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            };
-            const firestoreProfile = {
-              ...newProfile,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            };
-            await setDoc(userDocRef, firestoreProfile);
-            setProfile({
-              ...newProfile,
-              createdAt: { toDate: () => new Date() }, // Mock toDate for immediate UI consistency
-              updatedAt: { toDate: () => new Date() }
-            });
-          }
+          await loadProfile(user);
         } catch (error) {
           console.error('Error fetching/creating user profile:', error);
         }
@@ -71,10 +120,10 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [loadProfile]);
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, isAuthReady }}>
+    <AuthContext.Provider value={{ user, profile, loading, isAuthReady, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

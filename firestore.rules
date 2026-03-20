@@ -19,6 +19,18 @@ service cloud.firestore {
         && (userRole(request.auth.uid) in ['lawyer', 'admin', 'board']);
     }
 
+    function isLawyerOrAdminNoBoard() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && (userRole(request.auth.uid) in ['lawyer', 'admin']);
+    }
+
+    function isAdminOrBoard() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && (userRole(request.auth.uid) in ['admin', 'board']);
+    }
+
     function isAdmin() {
       return signedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
@@ -26,9 +38,7 @@ service cloud.firestore {
     }
 
     function isConsultationTriage() {
-      return signedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && (userRole(request.auth.uid) in ['admin', 'board']);
+      return isAdmin();
     }
 
     function isSafeText(v, max) {
@@ -116,6 +126,68 @@ service cloud.firestore {
       );
     }
 
+    function consultationCoreFieldsUnchanged(newData, oldData) {
+      return newData.createdBy == oldData.createdBy
+        && newData.createdAt == oldData.createdAt
+        && newData.topic == oldData.topic
+        && newData.area == oldData.area
+        && newData.notes == oldData.notes
+        && newData.clientName == oldData.clientName
+        && newData.preferredContact == oldData.preferredContact
+        && newData.aiResponse == oldData.aiResponse;
+    }
+
+    function consultationAssignmentFieldsUnchanged(newData, oldData) {
+      return newData.assignedTo == oldData.assignedTo
+        && newData.assignedAttorneyName == oldData.assignedAttorneyName
+        && newData.consultationMode == oldData.consultationMode;
+    }
+
+    function consultationAttorneyFieldsUnchanged(newData, oldData) {
+      return newData.attorneyResponse == oldData.attorneyResponse
+        && newData.attorneyRespondedAt == oldData.attorneyRespondedAt
+        && newData.attorneyRespondedBy == oldData.attorneyRespondedBy;
+    }
+
+    function creatorCanArchiveConsultation(newData, oldData) {
+      return signedIn()
+        && oldData.createdBy == request.auth.uid
+        && consultationCoreFieldsUnchanged(newData, oldData)
+        && consultationAssignmentFieldsUnchanged(newData, oldData)
+        && consultationAttorneyFieldsUnchanged(newData, oldData)
+        && (oldData.assignedTo == null || oldData.status == 'closed')
+        && newData.status == oldData.status
+        && oldData.deleted == false
+        && newData.deleted == true
+        && newData.updatedAt is timestamp;
+    }
+
+    function triageCanUpdateConsultation(newData, oldData) {
+      return isConsultationTriage()
+        && consultationCoreFieldsUnchanged(newData, oldData)
+        && consultationAttorneyFieldsUnchanged(newData, oldData)
+        && newData.status in ['open', 'pending', 'attorney_review', 'closed']
+        && newData.deleted == oldData.deleted
+        && newData.updatedAt is timestamp;
+    }
+
+    function assignedAttorneyCanUpdateConsultation(newData, oldData) {
+      return signedIn()
+        && oldData.assignedTo == request.auth.uid
+        && consultationCoreFieldsUnchanged(newData, oldData)
+        && consultationAssignmentFieldsUnchanged(newData, oldData)
+        && newData.status in ['attorney_review', 'closed']
+        && newData.deleted == oldData.deleted
+        && newData.attorneyRespondedBy == request.auth.uid
+        && newData.updatedAt is timestamp;
+    }
+
+    function canUpdateConsultation(data) {
+      return creatorCanArchiveConsultation(request.resource.data, data)
+        || triageCanUpdateConsultation(request.resource.data, data)
+        || assignedAttorneyCanUpdateConsultation(request.resource.data, data);
+    }
+
     function isValidReport(payload) {
       return isSafeText(payload.title, 120)
         && payload.category in ['fraud', 'harassment', 'discrimination', 'stolenBusinessData', 'other']
@@ -131,8 +203,20 @@ service cloud.firestore {
         && payload.status in ['open', 'reviewing', 'resolved']
         && payload.deleted is bool
         && (!('hasAttachment' in payload) || payload.hasAttachment is bool)
-        && (!('attachmentUrl' in payload) || (payload.attachmentUrl is string && payload.attachmentUrl.size() <= 1000))
-        && (!('attachmentPath' in payload) || (payload.attachmentPath is string && payload.attachmentPath.size() <= 1000));
+        && (!('attachmentUrl' in payload) || (
+          payload.attachmentUrl is string
+          && payload.attachmentUrl.size() <= 1000
+          && (
+            payload.attachmentUrl.matches('https://firebasestorage\\.googleapis\\.com/.*')
+            || payload.attachmentUrl.matches('https://storage\\.googleapis\\.com/.*')
+          )
+        ))
+        && (!('attachmentPath' in payload) || (
+          payload.attachmentPath is string
+          && payload.attachmentPath.size() <= 1000
+          && payload.attachmentPath.matches('incidents/.*')
+        ))
+        && (!('fileName' in payload) || (payload.fileName is string && payload.fileName.size() <= 160));
     }
 
     function isValidPost(payload) {
@@ -290,20 +374,42 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow read: if signedIn() && (isSelf(uid) || isLawyerOrAdmin());
+      allow read: if signedIn() && (isSelf(uid) || isAdminOrBoard());
       allow create: if signedIn()
         && isSelf(uid)
         && isSafeProfile(request.resource.data)
         && request.resource.data.uid == request.auth.uid
-        && request.resource.data.role == 'member' // Prevent privilege escalation on creation
+        && (
+          (
+            request.resource.data.role == 'member'
+            && (!('requiresApproval' in request.resource.data) || request.resource.data.requiresApproval == false)
+          )
+          || (
+            request.resource.data.role == 'pendingLawyer'
+            && request.resource.data.requestedRole == 'lawyer'
+            && request.resource.data.requiresApproval == true
+          )
+        )
         && request.resource.data.deleted == false;
       allow update: if signedIn()
         && isSafeProfile(request.resource.data)
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.createdAt == resource.data.createdAt
         && (
-          (isSelf(uid) && request.resource.data.role == resource.data.role)
-          || isLawyerOrAdmin()
+          (
+            isSelf(uid)
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.deleted == resource.data.deleted
+            && request.resource.data.email == resource.data.email
+            && request.resource.data.requestedRole == resource.data.requestedRole
+            && request.resource.data.requiresApproval == resource.data.requiresApproval
+            && request.resource.data.lawyerCodeUsed == resource.data.lawyerCodeUsed
+            && request.resource.data.approvedBy == resource.data.approvedBy
+            && request.resource.data.approvedAt == resource.data.approvedAt
+            && request.resource.data.rejectedBy == resource.data.rejectedBy
+            && request.resource.data.rejectedAt == resource.data.rejectedAt
+          )
+          || isAdmin()
         );
       allow delete: if false;
     }
@@ -379,7 +485,14 @@ service cloud.firestore {
         && isValidResource(request.resource.data)
         && request.resource.data.ownerUid == resource.data.ownerUid
         && request.resource.data.createdAt == resource.data.createdAt
-        && (resource.data.ownerUid == request.auth.uid || isLawyerOrAdmin());
+        && (
+          isLawyerOrAdmin()
+          || (
+            resource.data.ownerUid == request.auth.uid
+            && resource.data.moderationStatus == 'pending'
+            && request.resource.data.moderationStatus == resource.data.moderationStatus
+          )
+        );
       allow delete: if false;
     }
 
@@ -408,7 +521,7 @@ service cloud.firestore {
         && isValidConsultation(request.resource.data)
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.createdAt == resource.data.createdAt
-        && canAccessConsultation(resource.data);
+        && canUpdateConsultation(resource.data);
       allow delete: if false;
     }
 
@@ -423,7 +536,22 @@ service cloud.firestore {
         && isValidReport(request.resource.data)
         && request.resource.data.reportedBy == resource.data.reportedBy
         && request.resource.data.createdAt == resource.data.createdAt
-        && (resource.data.reportedBy == request.auth.uid || isLawyerOrAdmin());
+        && (
+          (
+            resource.data.reportedBy == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attachmentUrl', 'attachmentPath', 'fileName', 'hasAttachment', 'deleted', 'updatedAt'])
+            && (request.resource.data.deleted == resource.data.deleted || request.resource.data.deleted == true)
+            && request.resource.data.status == resource.data.status
+          )
+          || (
+            isLawyerOrAdmin()
+            && (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+              || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt', 'updatedAt'])
+            )
+            && request.resource.data.deleted == resource.data.deleted
+          )
+        );
       allow delete: if false;
     }
 
@@ -440,8 +568,16 @@ service cloud.firestore {
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.createdAt == resource.data.createdAt
         && (
-          resource.data.createdBy == request.auth.uid
-          || isLawyerOrAdmin()
+          isLawyerOrAdmin()
+          || (
+            resource.data.createdBy == request.auth.uid
+            && resource.data.moderationStatus == 'pending'
+            && request.resource.data.flags == resource.data.flags
+            && request.resource.data.moderationStatus == resource.data.moderationStatus
+            && request.resource.data.likes == resource.data.likes
+            && request.resource.data.likedBy == resource.data.likedBy
+            && request.resource.data.removed == resource.data.removed
+          )
           || (
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likedBy', 'likes', 'updatedAt'])
             && request.resource.data.removed == resource.data.removed
@@ -554,11 +690,11 @@ service cloud.firestore {
       allow read: if true;
       allow create: if signedIn()
                     && isSelf(uid)
-                    && isLawyerOrAdmin()
+                    && isLawyerOrAdminNoBoard()
                     && isValidAttorneyProfile(request.resource.data);
       allow update: if signedIn()
                     && isSelf(uid)
-                    && isLawyerOrAdmin()
+                    && isLawyerOrAdminNoBoard()
                     && isValidAttorneyProfile(request.resource.data)
                     && request.resource.data.uid == resource.data.uid
                     && request.resource.data.createdAt == resource.data.createdAt;
@@ -569,12 +705,12 @@ service cloud.firestore {
       allow read: if true;
       allow create: if signedIn()
                     && isSelf(request.resource.data.attorneyId)
-                    && isLawyerOrAdmin()
+                    && isLawyerOrAdminNoBoard()
                     && isValidLegalService(request.resource.data);
       allow update: if signedIn()
                     && isSelf(resource.data.attorneyId)
                     && isSelf(request.resource.data.attorneyId)
-                    && isLawyerOrAdmin()
+                    && isLawyerOrAdminNoBoard()
                     && isValidLegalService(request.resource.data)
                     && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if signedIn() && (isSelf(resource.data.attorneyId) || isAdmin());

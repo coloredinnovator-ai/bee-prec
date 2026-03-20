@@ -3,22 +3,33 @@
 import React, { useState } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { useAuth, OperationType, handleFirestoreError } from '@/components/FirebaseProvider';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
-import { motion } from 'motion/react';
 import Image from 'next/image';
 import { User, Mail, Shield, Calendar, Edit3, Save, X, Award, Bell, Camera } from 'lucide-react';
 
+const parseFocusAreas = (value: string) =>
+  value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+
 export default function ProfilePage() {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, refreshProfile } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [editedProfile, setEditedProfile] = useState({ 
     displayName: '', 
     bio: '',
     avatarUrl: '',
     notificationsEnabled: false,
+    organization: '',
     location: '',
-    coordinates: { lat: 0, lng: 0 }
+    coordinates: { lat: 0, lng: 0 },
+    focusAreas: [] as string[],
+    visibility: 'members',
+    offlineAccessRequested: false,
+    matchingOptIn: false,
   });
 
   if (loading) return (
@@ -42,18 +53,54 @@ export default function ProfilePage() {
       bio: profile?.bio || '',
       avatarUrl: profile?.avatarUrl || '',
       notificationsEnabled: profile?.notificationsEnabled || false,
+      organization: profile?.organization || '',
       location: profile?.location || '',
-      coordinates: profile?.coordinates || { lat: 0, lng: 0 }
+      coordinates: profile?.coordinates || { lat: 0, lng: 0 },
+      focusAreas: Array.isArray(profile?.focusAreas) ? profile.focusAreas : [],
+      visibility: profile?.visibility === 'public' ? 'public' : 'members',
+      offlineAccessRequested: Boolean(profile?.offlineAccessRequested),
+      matchingOptIn: Boolean(profile?.matchingOptIn),
     });
     setIsEditing(true);
   };
 
   const handleSave = async () => {
     try {
+      const normalizedFocusAreas = editedProfile.focusAreas.slice(0, 8);
+      const sharedProfileFields = {
+        displayName: editedProfile.displayName.trim(),
+        bio: editedProfile.bio.trim(),
+        avatarUrl: editedProfile.avatarUrl.trim(),
+        organization: editedProfile.organization.trim(),
+        location: editedProfile.location.trim(),
+        coordinates: editedProfile.coordinates,
+        focusAreas: normalizedFocusAreas,
+      };
+
       await updateDoc(doc(db, 'users', user.uid), {
-        ...editedProfile,
+        ...sharedProfileFields,
+        notificationsEnabled: editedProfile.notificationsEnabled,
         updatedAt: serverTimestamp()
       });
+
+      const publicProfileRef = doc(db, 'profiles', user.uid);
+      const existingPublicProfile = await getDoc(publicProfileRef);
+      const publicProfilePayload: Record<string, any> = {
+        uid: user.uid,
+        ...sharedProfileFields,
+        visibility: editedProfile.visibility,
+        offlineAccessRequested: editedProfile.offlineAccessRequested,
+        matchingOptIn: editedProfile.matchingOptIn,
+        updatedAt: serverTimestamp(),
+      };
+
+      if (!existingPublicProfile.exists()) {
+        publicProfilePayload.createdAt = serverTimestamp();
+        publicProfilePayload.verified = false;
+      }
+
+      await setDoc(publicProfileRef, publicProfilePayload, { merge: true });
+      await refreshProfile();
       setIsEditing(false);
 
       if (editedProfile.notificationsEnabled && user.email) {
@@ -151,6 +198,16 @@ export default function ProfilePage() {
                     />
                   </div>
                   <div>
+                    <label htmlFor="organization" className="sr-only">Organization</label>
+                    <input
+                      id="organization"
+                      value={editedProfile.organization}
+                      onChange={(e) => setEditedProfile({ ...editedProfile, organization: e.target.value })}
+                      className="w-full bg-stone-50 dark:bg-zinc-950 border border-stone-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm text-stone-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-colors"
+                      placeholder="Organization or collective"
+                    />
+                  </div>
+                  <div>
                     <label htmlFor="location" className="sr-only">Location Name</label>
                     <input
                       id="location"
@@ -158,6 +215,16 @@ export default function ProfilePage() {
                       onChange={(e) => setEditedProfile({ ...editedProfile, location: e.target.value })}
                       className="w-full bg-stone-50 dark:bg-zinc-950 border border-stone-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm text-stone-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-colors"
                       placeholder="City, Country"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="focusAreas" className="sr-only">Focus Areas</label>
+                    <input
+                      id="focusAreas"
+                      value={editedProfile.focusAreas.join(', ')}
+                      onChange={(e) => setEditedProfile({ ...editedProfile, focusAreas: parseFocusAreas(e.target.value) })}
+                      className="w-full bg-stone-50 dark:bg-zinc-950 border border-stone-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm text-stone-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-colors"
+                      placeholder="Co-op formation, governance, legal aid"
                     />
                   </div>
                   <div className="flex gap-4">
@@ -182,8 +249,49 @@ export default function ProfilePage() {
                         value={editedProfile.coordinates.lng || ''}
                         onChange={(e) => setEditedProfile({ ...editedProfile, coordinates: { ...editedProfile.coordinates, lng: parseFloat(e.target.value) || 0 } })}
                         className="w-full bg-stone-50 dark:bg-zinc-950 border border-stone-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm text-stone-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-colors"
-                        placeholder="Longitude (e.g. -122.4194)"
-                      />
+                      placeholder="Longitude (e.g. -122.4194)"
+                    />
+                  </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label htmlFor="visibility" className="block text-xs font-bold uppercase tracking-widest text-stone-500 dark:text-zinc-500 mb-2">
+                        Profile Visibility
+                      </label>
+                      <select
+                        id="visibility"
+                        value={editedProfile.visibility}
+                        onChange={(e) => setEditedProfile({ ...editedProfile, visibility: e.target.value as 'members' | 'public' })}
+                        className="w-full bg-stone-50 dark:bg-zinc-950 border border-stone-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm text-stone-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-colors"
+                      >
+                        <option value="members">Members Only</option>
+                        <option value="public">Public Map + Profile</option>
+                      </select>
+                    </div>
+                    <div className="rounded-xl border border-stone-200 dark:border-zinc-800 bg-stone-50 dark:bg-zinc-950 p-4">
+                      <p className="text-xs font-bold uppercase tracking-widest text-stone-500 dark:text-zinc-500 mb-3">
+                        Discovery Settings
+                      </p>
+                      <div className="space-y-3">
+                        <label className="flex items-start gap-3 text-sm text-stone-700 dark:text-zinc-300">
+                          <input
+                            type="checkbox"
+                            checked={editedProfile.matchingOptIn}
+                            onChange={(e) => setEditedProfile({ ...editedProfile, matchingOptIn: e.target.checked })}
+                            className="mt-0.5 h-4 w-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500"
+                          />
+                          <span>Opt into member matching and introductions</span>
+                        </label>
+                        <label className="flex items-start gap-3 text-sm text-stone-700 dark:text-zinc-300">
+                          <input
+                            type="checkbox"
+                            checked={editedProfile.offlineAccessRequested}
+                            onChange={(e) => setEditedProfile({ ...editedProfile, offlineAccessRequested: e.target.checked })}
+                            className="mt-0.5 h-4 w-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500"
+                          />
+                          <span>Request offline or low-connectivity support</span>
+                        </label>
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 bg-stone-50 dark:bg-zinc-950 p-4 rounded-xl border border-stone-200 dark:border-zinc-800">
@@ -232,6 +340,23 @@ export default function ProfilePage() {
                   <p className="text-stone-600 dark:text-zinc-400 max-w-xl mb-6 leading-relaxed">
                     {profile?.bio || 'No biography provided. Edit your profile to share your co-op interests with the community.'}
                   </p>
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    {profile?.organization && (
+                      <span className="inline-flex items-center rounded-full bg-stone-100 dark:bg-zinc-800 px-3 py-1 text-xs font-bold uppercase tracking-widest text-stone-600 dark:text-zinc-300">
+                        {profile.organization}
+                      </span>
+                    )}
+                    {profile?.visibility && (
+                      <span className="inline-flex items-center rounded-full bg-stone-100 dark:bg-zinc-800 px-3 py-1 text-xs font-bold uppercase tracking-widest text-stone-600 dark:text-zinc-300">
+                        {profile.visibility === 'public' ? 'Public Profile' : 'Members Only'}
+                      </span>
+                    )}
+                    {profile?.focusAreas?.slice?.(0, 3)?.map?.((area: string) => (
+                      <span key={area} className="inline-flex items-center rounded-full bg-amber-50 dark:bg-amber-500/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-amber-700 dark:text-amber-400">
+                        {area}
+                      </span>
+                    ))}
+                  </div>
                   <button
                     onClick={startEditing}
                     className="flex items-center gap-2 px-6 py-2 rounded-full bg-stone-100 dark:bg-zinc-800 text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-zinc-100 hover:bg-stone-200 dark:hover:bg-zinc-700 transition-all mx-auto md:mx-0 font-medium"

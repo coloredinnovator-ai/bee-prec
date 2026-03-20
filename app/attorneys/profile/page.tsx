@@ -45,7 +45,7 @@ const emptyService: ServiceDraft = {
 export default function AttorneyProfileEditor() {
   const { user, profile } = useAuth();
   const router = useRouter();
-  const isConsultationTriage = profile?.role === 'admin' || profile?.role === 'board';
+  const isConsultationTriage = profile?.role === 'admin';
 
   const [attorney, setAttorney] = useState<any>(null);
   const [services, setServices] = useState<any[]>([]);

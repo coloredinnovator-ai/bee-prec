@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow } from '@vis.gl/react-google-maps';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/firebase';
@@ -24,7 +24,11 @@ export default function GlobalMapPage() {
         const snapshot = await getDocs(q);
         const data = snapshot.docs
           .map(doc => ({ id: doc.id, ...doc.data() }))
-          .filter((p: any) => p.coordinates && p.coordinates.lat && p.coordinates.lng);
+          .filter((p: any) =>
+            p.coordinates
+            && Number.isFinite(p.coordinates.lat)
+            && Number.isFinite(p.coordinates.lng)
+          );
         setProfiles(data);
       } catch (error) {
         console.error('Error fetching profiles:', error);

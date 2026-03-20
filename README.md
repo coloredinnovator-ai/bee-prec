@@ -2,10 +2,10 @@
 
 Client repository for the BEE COOP platform. This repo currently contains two surfaces:
 
-- `app/`: a Next.js 15 application
-- `public/`: the static Firebase Hosting site that is currently deployed
+- `public/`: the static Firebase Hosting site that is currently deployed and serves as the live public intake/runtime
+- `app/`: a Next.js 15 member and operator portal that is validated in CI but is not the current Hosting deploy target
 
-The Next.js app and the static site share the same repo, but they are not the same deploy target. The Firebase workflows in this repo currently publish the `public/` site, while the Next app is validated locally and in CI.
+The Next.js app and the static site share the same repo, but they are not the same deploy target. The Firebase workflows in this repo currently publish the `public/` site, while the Next app is validated locally and in CI. Treat `public/` as the production public surface until a written cutover changes the workflows. Treat `app/` as the authenticated member and operator surface under active completion.
 
 ## Local development
 
@@ -38,6 +38,12 @@ GitHub Actions is the primary deployment path for the static site.
 5. The Next.js app is still part of the repo, but its runtime is not the current Firebase Hosting output.
 6. Treat the static Firebase site as the live public/member intake surface until a separate written cutover moves traffic to the Next.js runtime.
 7. Do not assume `app/` changes are live in production unless the release path is explicitly changed in GitHub workflows and deployment docs.
+
+## Runtime ownership
+
+- Public intake, clinic signup, newsletter capture, and static moderation widgets live under `public/`.
+- Authenticated member editing, operator queues, legal tools, and attorney dashboards live under `app/`.
+- If a workflow is moved between surfaces, update both this README and the Firebase/GitHub deploy contract in the same change.
 
 ## CI and operations assets
 

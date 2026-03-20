@@ -19,6 +19,7 @@ type PublicProfile = {
   location?: string;
   organization?: string;
   focusAreas?: string[];
+  visibility?: 'members' | 'public';
 };
 
 export default function PublicProfilePage() {
@@ -40,17 +41,18 @@ export default function PublicProfilePage() {
           getDoc(doc(db, 'profiles', uid)),
         ]);
 
+        if (!profileSnap.exists() || profileSnap.data().visibility !== 'public') {
+          setProfile(null);
+          return;
+        }
+
         const merged = {
           uid,
           ...(userSnap.exists() ? userSnap.data() : {}),
           ...(profileSnap.exists() ? profileSnap.data() : {}),
         } as PublicProfile;
 
-        setProfile(
-          userSnap.exists() || profileSnap.exists()
-            ? merged
-            : null
-        );
+        setProfile(merged);
       } catch (error) {
         console.error('Failed to load public profile:', error);
         setProfile(null);

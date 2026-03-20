@@ -9,7 +9,8 @@ import { Sparkles, Upload, FileText, AlertTriangle, CheckCircle, Loader2, FileUp
 import Image from 'next/image';
 import ReactMarkdown from 'react-markdown';
 import { collection, addDoc, query, where, orderBy, getDocs, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/firebase';
+import { auth, db } from '@/firebase';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
 const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024;
 const MAX_PROMPT_LENGTH = 5000;
@@ -20,13 +21,53 @@ const ALLOWED_DOCUMENT_TYPES = new Set([
   'text/plain',
 ]);
 
+function buildDocumentNotice(status: number, payload: any) {
+  if (status === 401) {
+    return {
+      tone: 'info' as const,
+      message: payload?.error || 'Sign in again before running secure document analysis.',
+    };
+  }
+
+  if (status === 413) {
+    return {
+      tone: 'error' as const,
+      message: payload?.error || 'This document is too large to analyze. Keep uploads under 5 MB.',
+    };
+  }
+
+  if (status === 429) {
+    const retryAfterSeconds =
+      Number(payload?.retryAfterSeconds) > 0 ? Number(payload.retryAfterSeconds) : null;
+    return {
+      tone: 'info' as const,
+      message:
+        retryAfterSeconds != null
+          ? `Document analysis is rate limited for your account. Try again in about ${retryAfterSeconds} seconds.`
+          : payload?.error || 'Document analysis is temporarily rate limited. Try again shortly.',
+    };
+  }
+
+  if (status === 503) {
+    return {
+      tone: 'info' as const,
+      message: 'Document analysis is temporarily unavailable on the server. Try again shortly.',
+    };
+  }
+
+  return {
+    tone: 'error' as const,
+    message: payload?.error || 'Failed to generate analysis. Please try again.',
+  };
+}
+
 export default function NexusAIPage() {
   const { user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ tone: 'error' | 'info' | 'success'; message: string } | null>(null);
   const [customPrompt, setCustomPrompt] = useState<string>('');
   const [history, setHistory] = useState<any[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -47,6 +88,10 @@ export default function NexusAIPage() {
       setHistory(historyData);
     } catch (err) {
       console.error('Failed to fetch history:', err);
+      setNotice({
+        tone: 'info',
+        message: 'We could not load your saved analysis history right now.',
+      });
     } finally {
       setIsLoadingHistory(false);
     }
@@ -78,7 +123,7 @@ export default function NexusAIPage() {
         setFile(null);
         setPreviewUrl(null);
         setAnalysisResult(null);
-        setError(validationError);
+        setNotice({ tone: 'error', message: validationError });
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
@@ -86,7 +131,7 @@ export default function NexusAIPage() {
       }
 
       setFile(selectedFile);
-      setError(null);
+      setNotice(null);
       setAnalysisResult(null);
       
       // Create preview for images
@@ -103,9 +148,21 @@ export default function NexusAIPage() {
     setFile(null);
     setPreviewUrl(null);
     setAnalysisResult(null);
-    setError(null);
+    setNotice(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  const promptSignIn = async () => {
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    } catch (err) {
+      console.error('Nexus AI connect failed:', err);
+      setNotice({
+        tone: 'error',
+        message: 'Could not start sign-in. Use the Connect button in the header and try again.',
+      });
     }
   };
 
@@ -130,18 +187,18 @@ export default function NexusAIPage() {
     if (!file) return;
 
     if (!user) {
-      setError('Sign in to run secure document analysis.');
+      setNotice({ tone: 'info', message: 'Sign in to run secure document analysis.' });
       return;
     }
 
     const validationError = validateSelectedFile(file);
     if (validationError) {
-      setError(validationError);
+      setNotice({ tone: 'error', message: validationError });
       return;
     }
 
     setIsAnalyzing(true);
-    setError(null);
+    setNotice(null);
     setAnalysisResult(null);
 
     try {
@@ -156,7 +213,10 @@ export default function NexusAIPage() {
 
       const finalPrompt = customPrompt.trim() ? customPrompt : defaultPrompt;
       if (finalPrompt.length > MAX_PROMPT_LENGTH) {
-        setError(`Prompt too long. Maximum supported prompt length is ${MAX_PROMPT_LENGTH} characters.`);
+        setNotice({
+          tone: 'error',
+          message: `Prompt too long. Maximum supported prompt length is ${MAX_PROMPT_LENGTH} characters.`,
+        });
         setIsAnalyzing(false);
         return;
       }
@@ -179,7 +239,7 @@ export default function NexusAIPage() {
       const payload = await response.json();
 
       if (!response.ok) {
-        setError(payload.error || 'Failed to generate analysis. Please try again.');
+        setNotice(buildDocumentNotice(response.status, payload));
         return;
       }
 
@@ -200,15 +260,22 @@ export default function NexusAIPage() {
             fetchHistory(); // Refresh history
           } catch (saveErr) {
             console.error('Failed to save analysis to history:', saveErr);
-            // Don't show error to user, analysis still succeeded
+            setNotice({
+              tone: 'info',
+              message:
+                'Analysis completed, but we could not save it to your history. Download the result if you need to keep it.',
+            });
           }
         }
       } else {
-        setError('Failed to generate analysis. Please try again.');
+        setNotice({ tone: 'error', message: 'Failed to generate analysis. Please try again.' });
       }
     } catch (err: any) {
       console.error('Analysis error:', err);
-      setError(err.message || 'An error occurred during analysis.');
+      setNotice({
+        tone: 'error',
+        message: err.message || 'An error occurred during analysis.',
+      });
     } finally {
       setIsAnalyzing(false);
     }
@@ -249,11 +316,19 @@ export default function NexusAIPage() {
 
         <div className="bg-white dark:bg-zinc-900 rounded-3xl border border-stone-200 dark:border-zinc-800 shadow-sm p-8 mb-8 transition-colors duration-300">
           {!user && (
-            <StatusNotice
-              tone="info"
-              message="Sign in before uploading a document. Secure analysis and retained history are available only to authenticated members."
-              className="mb-6"
-            />
+            <div className="mb-6 space-y-4">
+              <StatusNotice
+                tone="info"
+                message="Sign in before uploading a document. Secure analysis and retained history are available only to authenticated members."
+              />
+              <button
+                type="button"
+                onClick={promptSignIn}
+                className="inline-flex items-center gap-2 rounded-full border border-amber-300 px-5 py-2 text-sm font-bold uppercase tracking-widest text-amber-700 transition-colors hover:border-amber-500 hover:text-amber-600 dark:border-amber-500/30 dark:text-amber-300 dark:hover:border-amber-400 dark:hover:text-amber-200"
+              >
+                Connect Account
+              </button>
+            </div>
           )}
 
           {!file ? (
@@ -275,10 +350,17 @@ export default function NexusAIPage() {
                 Supports PDF, PNG, JPG, and TXT files up to 5 MB.
               </p>
               <button
+                type="button"
+                onClick={() => {
+                  if (user) {
+                    fileInputRef.current?.click();
+                  } else {
+                    promptSignIn();
+                  }
+                }}
                 className="px-6 py-2 rounded-full bg-stone-100 dark:bg-zinc-800 text-stone-900 dark:text-zinc-100 font-medium transition-colors disabled:opacity-60"
-                disabled={!user}
               >
-                {user ? 'Browse Files' : 'Sign In To Upload'}
+                {user ? 'Browse Files' : 'Connect To Upload'}
               </button>
             </div>
           ) : (
@@ -355,14 +437,14 @@ export default function NexusAIPage() {
         </div>
 
         <AnimatePresence>
-          {error && (
+          {notice && (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               className="mb-8"
             >
-              <StatusNotice tone="error" message={error} />
+              <StatusNotice tone={notice.tone} message={notice.message} />
             </motion.div>
           )}
 
@@ -394,7 +476,7 @@ export default function NexusAIPage() {
         </AnimatePresence>
 
         {/* History Section */}
-        {user && history.length > 0 && (
+        {user && (
           <div className="mt-16">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-stone-900 dark:text-zinc-100 flex items-center gap-2">
@@ -417,37 +499,47 @@ export default function NexusAIPage() {
                   exit={{ opacity: 0, height: 0 }}
                   className="overflow-hidden"
                 >
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {history.map((item) => (
-                      <div 
-                        key={item.id}
-                        className="bg-white dark:bg-zinc-900 border border-stone-200 dark:border-zinc-800 rounded-2xl p-6 hover:border-amber-500 dark:hover:border-amber-500 transition-colors cursor-pointer group"
-                        onClick={() => {
-                          setAnalysisResult(item.result);
-                          setCustomPrompt(item.prompt);
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }}
-                      >
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-lg bg-stone-100 dark:bg-zinc-800 flex items-center justify-center text-stone-500 dark:text-zinc-400">
-                              <FileText className="h-5 w-5" />
+                  {isLoadingHistory ? (
+                    <div className="rounded-2xl border border-stone-200 bg-white p-6 text-sm text-stone-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+                      Loading your saved analyses...
+                    </div>
+                  ) : history.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-stone-200 bg-white p-6 text-sm text-stone-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+                      No saved analyses yet. Completed analyses will appear here when history retention succeeds.
+                    </div>
+                  ) : (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {history.map((item) => (
+                        <div 
+                          key={item.id}
+                          className="bg-white dark:bg-zinc-900 border border-stone-200 dark:border-zinc-800 rounded-2xl p-6 hover:border-amber-500 dark:hover:border-amber-500 transition-colors cursor-pointer group"
+                          onClick={() => {
+                            setAnalysisResult(item.result);
+                            setCustomPrompt(item.prompt);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                        >
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 rounded-lg bg-stone-100 dark:bg-zinc-800 flex items-center justify-center text-stone-500 dark:text-zinc-400">
+                                <FileText className="h-5 w-5" />
+                              </div>
+                              <div>
+                                <h3 className="font-bold text-stone-900 dark:text-zinc-100 truncate max-w-[200px]">{item.fileName}</h3>
+                                <p className="text-xs text-stone-500 dark:text-zinc-500">
+                                  {item.createdAt?.toDate ? item.createdAt.toDate().toLocaleDateString() : 'Recent'}
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <h3 className="font-bold text-stone-900 dark:text-zinc-100 truncate max-w-[200px]">{item.fileName}</h3>
-                              <p className="text-xs text-stone-500 dark:text-zinc-500">
-                                {item.createdAt?.toDate ? item.createdAt.toDate().toLocaleDateString() : 'Recent'}
-                              </p>
-                            </div>
+                            <ChevronRight className="h-5 w-5 text-stone-300 dark:text-zinc-600 group-hover:text-amber-500 transition-colors" />
                           </div>
-                          <ChevronRight className="h-5 w-5 text-stone-300 dark:text-zinc-600 group-hover:text-amber-500 transition-colors" />
+                          <p className="text-sm text-stone-600 dark:text-zinc-400 line-clamp-2">
+                            {item.result.replace(/[#*]/g, '')}
+                          </p>
                         </div>
-                        <p className="text-sm text-stone-600 dark:text-zinc-400 line-clamp-2">
-                          {item.result.replace(/[#*]/g, '')}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

@@ -4,6 +4,7 @@ set -euo pipefail
 PROJECT_ID="${1:-nanny-tech}"
 HOSTING_TARGET="${2:-bee-prec-site}"
 PUBLIC_DIR="${3:-public}"
+DEPLOY_RULES="${DEPLOY_RULES:-1}"
 
 if [[ -z "${PROJECT_ID}" ]]; then
   echo "Usage: $0 <PROJECT_ID> [hosting_target] [public_dir]"
@@ -43,6 +44,14 @@ if [[ ! -f "${PUBLIC_DIR}/index.html" ]]; then
   exit 1
 fi
 cd - >/dev/null
+
+if [[ "${DEPLOY_RULES}" == "1" ]]; then
+  echo "Deploying shared Firestore and Storage rules in project '${PROJECT_ID}'."
+  firebase deploy \
+    --project "${PROJECT_ID}" \
+    --only "firestore:rules,storage" \
+    --non-interactive
+fi
 
 echo "Deploying BEE COOP web to hosting target '${HOSTING_TARGET}' in project '${PROJECT_ID}'."
 firebase deploy \

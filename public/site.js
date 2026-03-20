@@ -54,7 +54,6 @@ const state = {
   profilesCache: []
 };
 
-const LAWYER_CODES = new Set(['BEEPREC-LAWYER', 'BEEPREC-LAWYER-2026']);
 const ALLOWED_ROLES = ['member', 'pendingLawyer'];
 const MAX_TEXT_LENGTH = 5000;
 const MAX_SHORT_TEXT = 120;
@@ -248,7 +247,7 @@ function roleIsLawyer() {
 }
 
 function roleIsConsultationTriage() {
-  return state.profile && ['admin', 'board'].includes(state.profile.role);
+  return state.profile && state.profile.role === 'admin';
 }
 
 function sanitizeText(value = '', max = MAX_TEXT_LENGTH) {
@@ -304,9 +303,12 @@ function setIdentity(profile, user) {
   if (!user) {
     state.user = null;
     state.profile = null;
+    state.lawyerMode = false;
     conn.textContent = 'Public mode';
     userBadge.textContent = 'Not signed in';
     document.getElementById('logoutBtn').disabled = true;
+    document.getElementById('moderationTab').hidden = true;
+    syncProtectedPortalUi();
     return;
   }
   state.user = user;
@@ -316,10 +318,63 @@ function setIdentity(profile, user) {
   userBadge.textContent = `${user.email} (${profile?.role || 'member'})`;
   document.getElementById('logoutBtn').disabled = false;
   document.getElementById('moderationTab').hidden = !state.lawyerMode;
+  syncProtectedPortalUi();
 }
 
 function clearList(elm) {
   if (elm) elm.innerHTML = '';
+}
+
+function setConsultationStatus(message) {
+  const node = el('consultationStatus');
+  if (node) node.textContent = message;
+}
+
+function setReportStatus(message) {
+  const node = el('reportStatus');
+  if (node) node.textContent = message;
+}
+
+function setProtectedFormDisabled(formId, disabled) {
+  const form = el(formId);
+  if (!form) return;
+  form.querySelectorAll('input, select, textarea, button').forEach((field) => {
+    field.disabled = disabled;
+  });
+}
+
+function explainPortalAccessIssue(error, fallback, authFallback) {
+  const code = String(error?.code || '').toLowerCase();
+  if (code.includes('permission-denied')) return authFallback;
+  if (code.includes('unauthenticated')) return 'Sign in to continue.';
+  return fallback;
+}
+
+function syncProtectedPortalUi() {
+  const signedIn = !!state.user;
+  setProtectedFormDisabled('consultationForm', !signedIn);
+  setProtectedFormDisabled('reportForm', !signedIn);
+
+  const consultSubmitBtn = el('consultSubmitBtn');
+  if (consultSubmitBtn) {
+    consultSubmitBtn.textContent = signedIn ? 'Submit request' : 'Sign in to submit';
+  }
+
+  const reportSubmitBtn = el('reportSubmitBtn');
+  if (reportSubmitBtn) {
+    reportSubmitBtn.textContent = signedIn ? 'Submit report' : 'Sign in to submit';
+  }
+
+  setConsultationStatus(
+    signedIn
+      ? 'Consultations remain visible only to you and the triage team.'
+      : 'Sign in to request a private consultation. Requests remain visible only to you and the triage team.'
+  );
+  setReportStatus(
+    signedIn
+      ? 'Reports remain visible only to you and authorized reviewers.'
+      : 'Sign in to file a private report. Reports remain visible only to you and authorized reviewers.'
+  );
 }
 
 async function tryUploadAttachment(file, reportId, reportedBy) {
@@ -411,6 +466,21 @@ function escapeText(v) {
         return '&#39;';
     }
   });
+}
+
+function safeExternalUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'https:') return null;
+    if (!['firebasestorage.googleapis.com', 'storage.googleapis.com'].includes(parsed.hostname)) {
+      return null;
+    }
+    return parsed.toString();
+  } catch (_error) {
+    return null;
+  }
 }
 
 function setFormLoading(formId, loading) {
@@ -975,145 +1045,181 @@ async function submitConnectionRequest(event) {
 }
 async function loadConsultations() {
   clearList(el('consultList'));
-  let list = [];
-
-  if (roleIsConsultationTriage()) {
-    const snap = await getDocs(query(collection(db, 'consultations'), orderBy('createdAt', 'desc')));
-    list = snap.docs
-      .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
-      .filter((item) => !item.deleted);
-  } else {
-    const snapshots = await Promise.all([
-      getDocs(query(collection(db, 'consultations'), where('createdBy', '==', state.user.uid))),
-      state.profile?.role === 'lawyer'
-        ? getDocs(query(collection(db, 'consultations'), where('assignedTo', '==', state.user.uid)))
-        : Promise.resolve(null)
-    ]);
-    const byId = new Map();
-    snapshots
-      .filter(Boolean)
-      .forEach((snap) => {
-        snap.docs.forEach((docItem) => {
-          const item = { id: docItem.id, ...docItem.data() };
-          if (!item.deleted) byId.set(item.id, item);
-        });
-      });
-    list = Array.from(byId.values());
-  }
-
-  list = list.sort((a, b) => {
-    const ta = toDate(a.createdAt)?.getTime() || 0;
-    const tb = toDate(b.createdAt)?.getTime() || 0;
-    return tb - ta;
-  });
-
-  if (!list.length) {
-    clearList(el('consultList'));
-    el('consultList').innerHTML = '<p class="muted">No consultation entries yet.</p>';
+  if (!state.user) {
+    el('consultList').innerHTML = '<p class="muted">Sign in to view your private consultation requests.</p>';
     return;
   }
-  clearList(el('consultList'));
-  for (const item of list) {
-    const created = toDate(item.createdAt)?.toLocaleString() || 'N/A';
-    const body = `${escapeText(item.notes || '')}`;
-    const listItem = renderItem({
-      title: `${escapeText(item.topic || 'Consultation')} (${escapeText(item.area || 'uncategorized')})`,
-      body,
-      meta: `Requested by ${escapeText(item.clientName || item.createdBy)} · ${escapeText(item.status || 'open')} · ${created}`,
-      actions: [
-        state.lawyerMode
-          ? {
-              label: item.status === 'closed' ? 'Reopen' : 'Close',
-              onClick: async () => {
-                await updateDoc(doc(db, 'consultations', item.id), {
-                  status: item.status === 'closed' ? 'open' : 'closed',
-                  updatedAt: serverTimestamp()
-                });
-                await loadConsultations();
-                if (state.lawyerMode) await loadModerationConsults();
-              }
-            }
-          : {
-              label: 'Delete',
-              onClick: async () => {
-                await updateDoc(doc(db, 'consultations', item.id), {
-                  deleted: true,
-                  updatedAt: serverTimestamp()
-                });
-                await loadConsultations();
-              }
-            }
-      ]
+  let list = [];
+  try {
+    if (roleIsConsultationTriage()) {
+      const snap = await getDocs(query(collection(db, 'consultations'), orderBy('createdAt', 'desc')));
+      list = snap.docs
+        .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
+        .filter((item) => !item.deleted);
+    } else {
+      const snapshots = await Promise.all([
+        getDocs(query(collection(db, 'consultations'), where('createdBy', '==', state.user.uid))),
+        state.profile?.role === 'lawyer'
+          ? getDocs(query(collection(db, 'consultations'), where('assignedTo', '==', state.user.uid)))
+          : Promise.resolve(null)
+      ]);
+      const byId = new Map();
+      snapshots
+        .filter(Boolean)
+        .forEach((snap) => {
+          snap.docs.forEach((docItem) => {
+            const item = { id: docItem.id, ...docItem.data() };
+            if (!item.deleted) byId.set(item.id, item);
+          });
+        });
+      list = Array.from(byId.values());
+    }
+
+    list = list.sort((a, b) => {
+      const ta = toDate(a.createdAt)?.getTime() || 0;
+      const tb = toDate(b.createdAt)?.getTime() || 0;
+      return tb - ta;
     });
-    el('consultList').appendChild(listItem);
+
+    if (!list.length) {
+      clearList(el('consultList'));
+      el('consultList').innerHTML = '<p class="muted">No consultation requests yet. Submitted requests remain visible only to you and the triage team.</p>';
+      return;
+    }
+    clearList(el('consultList'));
+    for (const item of list) {
+      const created = toDate(item.createdAt)?.toLocaleString() || 'N/A';
+      const body = `${escapeText(item.notes || '')}`;
+      const canManageConsultation =
+        roleIsConsultationTriage() || item.assignedTo === state.user.uid;
+      const canArchiveConsultation =
+        item.createdBy === state.user.uid && (!item.assignedTo || item.status === 'closed');
+      const actions = [];
+      if (canManageConsultation) {
+        actions.push({
+          label: item.status === 'closed' ? 'Reopen' : 'Close',
+          onClick: async () => {
+            await updateDoc(doc(db, 'consultations', item.id), {
+              status: item.status === 'closed' ? 'open' : 'closed',
+              updatedAt: serverTimestamp()
+            });
+            await loadConsultations();
+            if (roleIsConsultationTriage()) await loadModerationConsults();
+          }
+        });
+      } else if (canArchiveConsultation) {
+        actions.push({
+          label: 'Delete',
+          onClick: async () => {
+            await updateDoc(doc(db, 'consultations', item.id), {
+              deleted: true,
+              updatedAt: serverTimestamp()
+            });
+            await loadConsultations();
+          }
+        });
+      }
+      const listItem = renderItem({
+        title: `${escapeText(item.topic || 'Consultation')} (${escapeText(item.area || 'uncategorized')})`,
+        body,
+        meta: `Requested by ${escapeText(item.clientName || item.createdBy)} · ${escapeText(item.status || 'open')} · ${created}`,
+        actions
+      });
+      el('consultList').appendChild(listItem);
+    }
+  } catch (error) {
+    console.error('Failed to load consultations:', error);
+    el('consultList').innerHTML = `<p class="muted">${escapeText(
+      explainPortalAccessIssue(
+        error,
+        'Could not load consultations right now.',
+        'Your consultation history is private to your account and the triage team. Sign in with the correct account to view it.'
+      )
+    )}</p>`;
   }
 }
 
 async function loadReports() {
   clearList(el('reportList'));
-  const reportQuery = state.lawyerMode
-    ? query(collection(db, 'incidentReports'), orderBy('createdAt', 'desc'))
-    : query(collection(db, 'incidentReports'), where('reportedBy', '==', state.user.uid));
-  const snap = await getDocs(reportQuery);
-  const all = snap.docs
-    .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
-    .filter((item) => !item.deleted)
-    .sort((a, b) => {
-      const ta = toDate(a.createdAt)?.getTime() || 0;
-      const tb = toDate(b.createdAt)?.getTime() || 0;
-      return tb - ta;
-    });
-  const list = state.lawyerMode ? all : all.filter((x) => x.reportedBy === state.user.uid);
-  if (!list.length) {
-    el('reportList').innerHTML = '<p class="muted">No reports to show yet.</p>';
+  if (!state.user) {
+    el('reportList').innerHTML = '<p class="muted">Sign in to view your private incident reports.</p>';
     return;
   }
-  clearList(el('reportList'));
-  for (const item of list) {
-    const alias = item.anonymous ? 'Anonymous' : item.reporterAlias || state.user.email;
-    const business = item.businessName ? ` · ${escapeText(item.businessName)}` : '';
-    const location = item.location ? ` · ${escapeText(item.location)}` : '';
-    const created = toDate(item.occurredAt)?.toLocaleString() || 'N/A';
-    const attachment = item.attachmentUrl
-      ? `<a href="${escapeText(item.attachmentUrl)}" target="_blank" rel="noreferrer">attachment</a>`
-      : 'no attachment';
-    const listItem = renderItem({
-      title: `${escapeText(item.title || 'Incident report')} · ${escapeText(item.category || 'uncategorized')}`,
-      body: `${escapeText(item.body || '')}<br/>${escapeText(alias || '')} · Attachment: ${attachment}`,
-      meta: `Priority: ${escapeText(item.priority || 'medium')}${business}${location} · status: ${escapeText(item.status || 'open')} · ${created}`,
-      actions: state.lawyerMode
-        ? [
-            {
-              label: 'Set reviewing',
-              onClick: async () => {
-                await updateDoc(doc(db, 'incidentReports', item.id), { status: 'reviewing', updatedAt: serverTimestamp() });
-                await loadReports();
-                await loadModerationReports();
+  try {
+    const reportQuery = state.lawyerMode
+      ? query(collection(db, 'incidentReports'), orderBy('createdAt', 'desc'))
+      : query(collection(db, 'incidentReports'), where('reportedBy', '==', state.user.uid));
+    const snap = await getDocs(reportQuery);
+    const all = snap.docs
+      .map((docItem) => ({ id: docItem.id, ...docItem.data() }))
+      .filter((item) => !item.deleted)
+      .sort((a, b) => {
+        const ta = toDate(a.createdAt)?.getTime() || 0;
+        const tb = toDate(b.createdAt)?.getTime() || 0;
+        return tb - ta;
+      });
+    const list = state.lawyerMode ? all : all.filter((x) => x.reportedBy === state.user.uid);
+    if (!list.length) {
+      el('reportList').innerHTML = '<p class="muted">No reports to show yet. Filed reports remain visible only to you and authorized reviewers.</p>';
+      return;
+    }
+    clearList(el('reportList'));
+    for (const item of list) {
+      const alias = item.anonymous ? 'Anonymous' : item.reporterAlias || state.user.email;
+      const business = item.businessName ? ` · ${escapeText(item.businessName)}` : '';
+      const location = item.location ? ` · ${escapeText(item.location)}` : '';
+      const created = toDate(item.occurredAt)?.toLocaleString() || 'N/A';
+      const attachmentUrl = safeExternalUrl(item.attachmentUrl);
+      const attachment = attachmentUrl
+        ? `<a href="${escapeText(attachmentUrl)}" target="_blank" rel="noreferrer">attachment</a>`
+        : 'no attachment';
+      const listItem = renderItem({
+        title: `${escapeText(item.title || 'Incident report')} · ${escapeText(item.category || 'uncategorized')}`,
+        body: `${escapeText(item.body || '')}<br/>${escapeText(alias || '')} · Attachment: ${attachment}`,
+        meta: `Priority: ${escapeText(item.priority || 'medium')}${business}${location} · status: ${escapeText(item.status || 'open')} · ${created}`,
+        actions: state.lawyerMode
+          ? [
+              {
+                label: 'Set reviewing',
+                onClick: async () => {
+                  await updateDoc(doc(db, 'incidentReports', item.id), { status: 'reviewing', updatedAt: serverTimestamp() });
+                  await loadReports();
+                  await loadModerationReports();
+                }
+              },
+              {
+                label: 'Set resolved',
+                onClick: async () => {
+                  await updateDoc(doc(db, 'incidentReports', item.id), { status: 'resolved', updatedAt: serverTimestamp() });
+                  await loadReports();
+                  await loadModerationReports();
+                }
               }
-            },
-            {
-              label: 'Set resolved',
-              onClick: async () => {
-                await updateDoc(doc(db, 'incidentReports', item.id), { status: 'resolved', updatedAt: serverTimestamp() });
-                await loadReports();
-                await loadModerationReports();
+            ]
+          : [
+              {
+                label: 'Delete',
+                onClick: async () => {
+                  await updateDoc(doc(db, 'incidentReports', item.id), {
+                    deleted: true,
+                    updatedAt: serverTimestamp()
+                  });
+                  await loadReports();
+                }
               }
-            }
-          ]
-        : [
-            {
-              label: 'Delete',
-              onClick: async () => {
-                await updateDoc(doc(db, 'incidentReports', item.id), {
-                  deleted: true,
-                  updatedAt: serverTimestamp()
-                });
-                await loadReports();
-              }
-            }
-          ]
-    });
-    el('reportList').appendChild(listItem);
+            ]
+      });
+      el('reportList').appendChild(listItem);
+    }
+  } catch (error) {
+    console.error('Failed to load reports:', error);
+    el('reportList').innerHTML = `<p class="muted">${escapeText(
+      explainPortalAccessIssue(
+        error,
+        'Could not load reports right now.',
+        'Your reports are private to your account and authorized reviewers. Sign in with the correct account to view them.'
+      )
+    )}</p>`;
   }
 }
 
@@ -1211,7 +1317,7 @@ async function loadPosts() {
       });
       row.appendChild(hideBtn);
     }
-    if (p.createdBy === state.user.uid || roleIsLawyer()) {
+    if (roleIsLawyer()) {
       const delBtn = document.createElement('button');
       delBtn.type = 'button';
       delBtn.textContent = 'Delete';
@@ -1384,6 +1490,10 @@ async function loadModerationPosts() {
 async function loadModerationLawyers() {
   clearList(el('moderationLawyers'));
   if (!state.lawyerMode) return;
+  if (state.profile?.role !== 'admin') {
+    el('moderationLawyers').innerHTML = '<p class="muted">Only admins can approve lawyer access requests.</p>';
+    return;
+  }
   const snap = await getDocs(query(collection(db, 'users'), where('role', '==', 'pendingLawyer'), orderBy('createdAt', 'desc')));
   const items = snap.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
   if (!items.length) {
@@ -1757,13 +1867,8 @@ async function setupEventHandlers() {
     const email = el('regEmail').value.trim();
     const password = el('regPassword').value;
     const role = el('regRole').value;
-    const lawyerCode = el('regLawyerCode').value.trim();
     if (!displayName || !email || !password) return showToast('Please complete all required fields.');
     if (password.length < 8) return showToast('Password must be at least 8 characters.');
-    if (role === 'lawyer' && !LAWYER_CODES.has(lawyerCode)) {
-      showToast('Invalid lawyer code.');
-      return;
-    }
     state.loading = true;
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
@@ -1776,7 +1881,6 @@ async function setupEventHandlers() {
         role: isLawyer ? 'pendingLawyer' : 'member',
         requestedRole: isLawyer ? 'lawyer' : 'member',
         requiresApproval: isLawyer,
-        lawyerCodeUsed: isLawyer ? lawyerCode : null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         deleted: false
@@ -1831,7 +1935,10 @@ async function setupEventHandlers() {
   el('consultationForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (state.loading) return;
-    if (!state.user) return showToast('Sign in required');
+    if (!state.user) {
+      setConsultationStatus('Sign in to request a private consultation. Requests remain visible only to you and the triage team.');
+      return showToast('Sign in required');
+    }
     const topic = sanitizeText(el('consultTopic').value, MAX_SHORT_TEXT);
     const notes = sanitizeText(el('consultNotes').value, MAX_TEXT_LENGTH);
     const area = sanitizeText(el('consultArea').value, 40);
@@ -1859,7 +1966,17 @@ async function setupEventHandlers() {
       e.target.reset();
       await loadConsultations();
       if (state.lawyerMode) await loadModerationConsults();
+      setConsultationStatus('Consultation submitted. It remains visible only to you and the triage team.');
       showToast('Consultation submitted');
+    } catch (error) {
+      console.error('Consultation submission failed:', error);
+      const message = explainPortalAccessIssue(
+        error,
+        'Could not submit your consultation right now.',
+        'Your account no longer has access to private consultation submissions. Sign in again or contact the review team.'
+      );
+      setConsultationStatus(message);
+      showToast(message, 4200);
     } finally {
       state.loading = false;
     }
@@ -1868,7 +1985,10 @@ async function setupEventHandlers() {
   el('reportForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (state.loading) return;
-    if (!state.user) return showToast('Sign in required');
+    if (!state.user) {
+      setReportStatus('Sign in to file a private report. Reports remain visible only to you and authorized reviewers.');
+      return showToast('Sign in required');
+    }
     const title = sanitizeText(el('reportTitle').value, MAX_SHORT_TEXT);
     const category = sanitizeText(el('reportCategory').value, 40);
     const priority = sanitizeText(el('reportPriority').value, 20);
@@ -1913,7 +2033,17 @@ async function setupEventHandlers() {
       e.target.reset();
       await loadReports();
       if (state.lawyerMode) await loadModerationReports();
+      setReportStatus('Report filed. It remains visible only to you and authorized reviewers.');
       showToast('Report filed');
+    } catch (error) {
+      console.error('Report submission failed:', error);
+      const message = explainPortalAccessIssue(
+        error,
+        'Could not submit your report right now.',
+        'Your account no longer has access to private report submissions. Sign in again or contact the review team.'
+      );
+      setReportStatus(message);
+      showToast(message, 4200);
     } finally {
       state.loading = false;
     }
@@ -2061,4 +2191,5 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 await setupEventHandlers();
+syncProtectedPortalUi();
 showSection('dashboard');

@@ -25,9 +25,9 @@ if [[ ! -d "${SCRIPT_DIR}/../${PUBLIC_DIR}" ]]; then
 fi
 
 echo "Deploying BEE COOP production..."
-"${DEPLOY_SCRIPT}" "${PROJECT_ID}" "bee-prec-site" "${PUBLIC_DIR}"
+DEPLOY_RULES=1 "${DEPLOY_SCRIPT}" "${PROJECT_ID}" "bee-prec-site" "${PUBLIC_DIR}"
 
 echo "Deploying BEE COOP staging..."
-"${DEPLOY_SCRIPT}" "${PROJECT_ID}" "bee-prec-site-staging" "${PUBLIC_DIR}"
+DEPLOY_RULES=0 "${DEPLOY_SCRIPT}" "${PROJECT_ID}" "bee-prec-site-staging" "${PUBLIC_DIR}"
 
 echo "Deployment complete for project ${PROJECT_ID}."
