@@ -1,0 +1,524 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userRole(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.role;
+    }
+
+    function isSelf(uid) {
+      return request.auth.uid == uid;
+    }
+
+    function isLawyerOrAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && (userRole(request.auth.uid) in ['lawyer', 'admin', 'board']);
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && (userRole(request.auth.uid) == 'admin');
+    }
+
+    function isSafeText(v, max) {
+      return v is string && v.size() <= max && v.size() >= 1;
+    }
+
+    function isSafeProfile(profile) {
+      return isSafeText(profile.uid, 128)
+        && profile.displayName is string
+        && profile.displayName.size() <= 80
+        && profile.email is string
+        && profile.email.size() <= 160
+        && profile.role in ['member', 'pendingLawyer', 'lawyer', 'admin', 'board', 'maintenance']
+        && (!('bio' in profile) || (profile.bio is string && profile.bio.size() <= 400))
+        && (!('avatarUrl' in profile) || (profile.avatarUrl is string && profile.avatarUrl.size() <= 1000))
+        && (!('notificationsEnabled' in profile) || profile.notificationsEnabled is bool)
+        && profile.createdAt is timestamp
+        && profile.updatedAt is timestamp
+        && profile.deleted is bool;
+    }
+
+    function isValidProfilePayload(profile) {
+      return isSafeText(profile.uid, 128)
+        && isSafeText(profile.displayName, 80)
+        && (!('handle' in profile) || (profile.handle is string && profile.handle.size() <= 40))
+        && (!('organization' in profile) || (profile.organization is string && profile.organization.size() <= 120))
+        && (!('location' in profile) || (profile.location is string && profile.location.size() <= 80))
+        && (!('coordinates' in profile) || (profile.coordinates is map && profile.coordinates.lat is number && profile.coordinates.lng is number))
+        && (!('website' in profile) || (profile.website is string && profile.website.size() <= 160))
+        && (!('bio' in profile) || (profile.bio is string && profile.bio.size() <= 400))
+        && (!('focusAreas' in profile) || (profile.focusAreas is list && profile.focusAreas.size() <= 8))
+        && (!('avatarUrl' in profile) || (profile.avatarUrl is string && profile.avatarUrl.size() <= 1000))
+        && (!('avatarPath' in profile) || (profile.avatarPath is string && profile.avatarPath.size() <= 1000))
+        && (!('verified' in profile) || profile.verified is bool)
+        && (!('verifiedAt' in profile) || profile.verifiedAt is timestamp)
+        && profile.visibility in ['members', 'public']
+        && profile.offlineAccessRequested is bool
+        && profile.matchingOptIn is bool
+        && profile.createdAt is timestamp
+        && profile.updatedAt is timestamp;
+    }
+
+    function isValidIdentityPayload(payload) {
+      return isSafeText(payload.uid, 128)
+        && isSafeText(payload.legalName, 120)
+        && payload.idType in ['drivers-license', 'passport', 'state-id', 'other']
+        && isSafeText(payload.documentUrl, 1000)
+        && isSafeText(payload.documentPath, 1000)
+        && (!('documentName' in payload) || (payload.documentName is string && payload.documentName.size() <= 160))
+        && payload.status in ['pending', 'verified', 'rejected']
+        && payload.consent is bool
+        && payload.consent == true
+        && payload.submittedAt is timestamp
+        && payload.updatedAt is timestamp
+        && (!('reviewedBy' in payload) || (payload.reviewedBy is string && payload.reviewedBy.size() <= 128))
+        && (!('reviewedAt' in payload) || payload.reviewedAt is timestamp);
+    }
+
+    function isValidConsultation(payload) {
+      return isSafeText(payload.topic, 120)
+        && payload.area in ['contracts', 'workplace', 'smallBusiness', 'cyber', 'other', 'AI Consultation']
+        && (!('urgency' in payload) || payload.urgency in ['low', 'normal', 'high', 'critical'])
+        && isSafeText(payload.notes, 5000)
+        && isSafeText(payload.createdBy, 128)
+        && isSafeText(payload.clientName, 80)
+        && (!('preferredContact' in payload) || isSafeText(payload.preferredContact, 80))
+        && (!('aiResponse' in payload) || (payload.aiResponse is string && payload.aiResponse.size() <= 10000))
+        && payload.createdAt is timestamp
+        && payload.updatedAt is timestamp
+        && payload.status in ['open', 'closed', 'pending', 'ai_responded', 'attorney_review']
+        && payload.deleted is bool;
+    }
+
+    function isValidReport(payload) {
+      return isSafeText(payload.title, 120)
+        && payload.category in ['fraud', 'harassment', 'discrimination', 'stolenBusinessData', 'other']
+        && (!('businessName' in payload) || (payload.businessName is string && payload.businessName.size() <= 80))
+        && (!('location' in payload) || (payload.location is string && payload.location.size() <= 80))
+        && isSafeText(payload.body, 5000)
+        && isSafeText(payload.reportedBy, 128)
+        && isSafeText(payload.reporterAlias, 80)
+        && payload.occurredAt is timestamp
+        && payload.createdAt is timestamp
+        && payload.anonymous is bool
+        && payload.priority in ['low', 'medium', 'high']
+        && payload.status in ['open', 'reviewing', 'resolved']
+        && payload.deleted is bool
+        && (!('hasAttachment' in payload) || payload.hasAttachment is bool)
+        && (!('attachmentUrl' in payload) || (payload.attachmentUrl is string && payload.attachmentUrl.size() <= 1000))
+        && (!('attachmentPath' in payload) || (payload.attachmentPath is string && payload.attachmentPath.size() <= 1000));
+    }
+
+    function isValidPost(payload) {
+      return isSafeText(payload.title, 160)
+        && isSafeText(payload.body, 5000)
+        && isSafeText(payload.createdBy, 128)
+        && isSafeText(payload.authorName, 80)
+        && payload.flags is int
+        && payload.flags >= 0
+        && payload.removed is bool
+        && (!('moderationStatus' in payload) || payload.moderationStatus in ['pending', 'approved', 'rejected'])
+        && payload.createdAt is timestamp
+        && payload.updatedAt is timestamp;
+    }
+
+    function isValidComment(payload) {
+      return isSafeText(payload.body, 800)
+        && isSafeText(payload.postId, 128)
+        && isSafeText(payload.createdBy, 128)
+        && isSafeText(payload.authorName, 80)
+        && payload.createdAt is timestamp
+        && payload.deleted is bool;
+    }
+
+    function isValidNewsletter(payload) {
+      return payload.email is string
+        && payload.email.size() >= 3
+        && payload.email.size() <= 160
+        && payload.email.matches('.*@.*\\..*')
+        && payload.emailLower is string
+        && payload.emailLower.size() == payload.email.size()
+        && payload.topics is list
+        && payload.topics.size() >= 1
+        && payload.topics.size() <= 5
+        && payload.topics.hasOnly(['co-op-news', 'guides', 'coop-project-updates'])
+        && payload.consent is bool
+        && payload.consent == true
+        && isSafeText(payload.source, 120)
+        && payload.status in ['active', 'unsubscribed']
+        && payload.createdAt is timestamp
+        && payload.updatedAt is timestamp;
+    }
+
+    function isValidClinic(payload) {
+      return isSafeText(payload.name, 80)
+        && payload.email is string
+        && payload.email.size() >= 3
+        && payload.email.size() <= 160
+        && payload.email.matches('.*@.*\\..*')
+        && payload.emailLower is string
+        && payload.emailLower.size() == payload.email.size()
+        && (!('organization' in payload) || (payload.organization is string && payload.organization.size() <= 120))
+        && (!('location' in payload) || (payload.location is string && payload.location.size() <= 120))
+        && payload.stage in ['idea', 'planning', 'pilot', 'ready-to-launch']
+        && payload.helpType in ['legal-coop-setup', 'governance', 'funding', 'member-structure', 'other']
+        && isSafeText(payload.description, 1200)
+        && (!('preferredContact' in payload) || (payload.preferredContact is string && payload.preferredContact.size() <= 120))
+        && payload.consent is bool
+        && payload.consent == true
+        && payload.status in ['received', 'in-review', 'closed']
+        && isSafeText(payload.source, 120)
+        && payload.createdAt is timestamp
+        && payload.updatedAt is timestamp;
+    }
+
+    function isValidMatch(payload) {
+      return isSafeText(payload.fromUid, 128)
+        && isSafeText(payload.toUid, 128)
+        && isSafeText(payload.fromName, 80)
+        && isSafeText(payload.toName, 80)
+        && (!('message' in payload) || (payload.message is string && payload.message.size() <= 400))
+        && payload.status in ['pending', 'accepted', 'declined']
+        && payload.createdAt is timestamp
+        && payload.updatedAt is timestamp;
+    }
+
+    function isValidResource(payload) {
+      return isSafeText(payload.title, 120)
+        && isSafeText(payload.description, 5000)
+        && isSafeText(payload.ownerUid, 128)
+        && payload.type in ['tool', 'space', 'expertise', 'funding']
+        && (!('category' in payload) || (payload.category is string && payload.category.size() <= 80))
+        && (!('moderationStatus' in payload) || payload.moderationStatus in ['pending', 'approved', 'rejected'])
+        && payload.createdAt is timestamp;
+    }
+
+    function isValidMinute(payload) {
+      return isSafeText(payload.title, 120)
+        && isSafeText(payload.content, 10000)
+        && isSafeText(payload.recordedBy, 128)
+        && payload.date is timestamp;
+    }
+
+    function isValidMaintenanceTicket(payload) {
+      return isSafeText(payload.title, 120)
+        && isSafeText(payload.description, 5000)
+        && isSafeText(payload.unitId, 80)
+        && isSafeText(payload.reportedBy, 128)
+        && payload.status in ['open', 'in-progress', 'resolved']
+        && payload.createdAt is timestamp;
+    }
+
+    function isValidUnit(payload) {
+      return isSafeText(payload.id, 80)
+        && isSafeText(payload.number, 80)
+        && (!('occupantId' in payload) || payload.occupantId == null || (payload.occupantId is string && payload.occupantId.size() <= 128))
+        && payload.status in ['occupied', 'vacant', 'maintenance'];
+    }
+
+    function isValidAiAnalysis(payload) {
+      return isSafeText(payload.userId, 128)
+        && isSafeText(payload.fileName, 255)
+        && (!('fileType' in payload) || (payload.fileType is string && payload.fileType.size() <= 100))
+        && isSafeText(payload.prompt, 5000)
+        && isSafeText(payload.result, 100000)
+        && payload.createdAt is timestamp;
+    }
+
+    function isValidAttorneyProfile(payload) {
+      return isSafeText(payload.uid, 128)
+        && isSafeText(payload.name, 120)
+        && payload.barAdmissions is list
+        && payload.specializations is list
+        && payload.yearsOfExperience is number
+        && (!('bio' in payload) || isSafeText(payload.bio, 5000))
+        && (!('testimonials' in payload) || payload.testimonials is list)
+        && payload.createdAt is timestamp
+        && payload.updatedAt is timestamp;
+    }
+
+    function isValidLegalService(payload) {
+      return isSafeText(payload.attorneyId, 128)
+        && isSafeText(payload.attorneyName, 120)
+        && isSafeText(payload.title, 160)
+        && isSafeText(payload.category, 80)
+        && (!('description' in payload) || isSafeText(payload.description, 5000))
+        && payload.feeType in ['flat', 'hourly', 'sliding-scale', 'consultation', 'contingency']
+        && isSafeText(payload.feeAmount, 80)
+        && payload.createdAt is timestamp;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (isSelf(uid) || isLawyerOrAdmin());
+      allow create: if signedIn()
+        && isSelf(uid)
+        && isSafeProfile(request.resource.data)
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.role == 'member' // Prevent privilege escalation on creation
+        && request.resource.data.deleted == false;
+      allow update: if signedIn()
+        && isSafeProfile(request.resource.data)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (
+          (isSelf(uid) && request.resource.data.role == resource.data.role)
+          || isLawyerOrAdmin()
+        );
+      allow delete: if false;
+    }
+
+    match /profiles/{uid} {
+      allow create: if signedIn()
+        && isSelf(uid)
+        && request.resource.data.uid == request.auth.uid
+        && isValidProfilePayload(request.resource.data);
+      allow read: if signedIn() || resource.data.visibility == 'public';
+      allow update: if signedIn() 
+        && isValidProfilePayload(request.resource.data)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (
+        (isSelf(uid)
+          && request.resource.data.verified == resource.data.verified
+          && request.resource.data.verifiedAt == resource.data.verifiedAt)
+        || isLawyerOrAdmin()
+      );
+      allow delete: if false;
+    }
+
+    match /identityVerifications/{uid} {
+      allow create: if signedIn()
+        && isSelf(uid)
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && isValidIdentityPayload(request.resource.data);
+      allow read: if signedIn() && (isSelf(uid) || isLawyerOrAdmin());
+      allow update: if signedIn() 
+        && isValidIdentityPayload(request.resource.data)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.submittedAt == resource.data.submittedAt
+        && (
+        (isSelf(uid)
+          && request.resource.data.status == 'pending'
+          && !('reviewedBy' in request.resource.data)
+          && !('reviewedAt' in request.resource.data))
+        || isLawyerOrAdmin()
+      );
+      allow delete: if false;
+    }
+
+    match /matchRequests/{requestId} {
+      allow create: if signedIn()
+        && request.resource.data.fromUid == request.auth.uid
+        && isValidMatch(request.resource.data);
+      allow read: if signedIn() && (
+        request.auth.uid == resource.data.fromUid
+        || request.auth.uid == resource.data.toUid
+        || isLawyerOrAdmin()
+      );
+      allow update: if signedIn() 
+        && isValidMatch(request.resource.data)
+        && request.resource.data.fromUid == resource.data.fromUid
+        && request.resource.data.toUid == resource.data.toUid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (
+          request.auth.uid == resource.data.fromUid 
+          || request.auth.uid == resource.data.toUid
+          || isLawyerOrAdmin()
+        );
+      allow delete: if false;
+    }
+
+    match /resources/{resourceId} {
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && isValidResource(request.resource.data);
+      allow read: if signedIn();
+      allow update: if signedIn() 
+        && isValidResource(request.resource.data)
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (resource.data.ownerUid == request.auth.uid || isLawyerOrAdmin());
+      allow delete: if false;
+    }
+
+    match /consultations/{consultId} {
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && isValidConsultation(request.resource.data);
+      allow read: if signedIn() && (
+        resource.data.createdBy == request.auth.uid || isLawyerOrAdmin()
+      );
+      allow update: if signedIn() 
+        && isValidConsultation(request.resource.data)
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (resource.data.createdBy == request.auth.uid || isLawyerOrAdmin());
+      allow delete: if false;
+    }
+
+    match /incidentReports/{reportId} {
+      allow create: if signedIn()
+        && request.resource.data.reportedBy == request.auth.uid
+        && isValidReport(request.resource.data);
+      allow read: if signedIn() && (
+        resource.data.reportedBy == request.auth.uid || isLawyerOrAdmin()
+      );
+      allow update: if signedIn() 
+        && isValidReport(request.resource.data)
+        && request.resource.data.reportedBy == resource.data.reportedBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (resource.data.reportedBy == request.auth.uid || isLawyerOrAdmin());
+      allow delete: if false;
+    }
+
+    match /communityPosts/{postId} {
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && isValidPost(request.resource.data);
+      allow read: if signedIn() && (
+        !resource.data.removed || isLawyerOrAdmin()
+      );
+      allow update: if signedIn() 
+        && isValidPost(request.resource.data)
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (resource.data.createdBy == request.auth.uid || isLawyerOrAdmin());
+      allow delete: if false;
+    }
+
+    match /communityComments/{commentId} {
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && isValidComment(request.resource.data);
+      allow read: if signedIn() && (
+        !resource.data.deleted || isLawyerOrAdmin()
+      );
+      allow update: if signedIn() 
+        && isValidComment(request.resource.data)
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.postId == resource.data.postId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (resource.data.createdBy == request.auth.uid || isLawyerOrAdmin());
+      allow delete: if false;
+    }
+
+    match /deletionRequests/{requestId} {
+      allow create: if signedIn()
+        && request.resource.data.requesterId == request.auth.uid
+        && isSafeText(request.resource.data.requesterAlias, 80)
+        && isSafeText(request.resource.data.requesterEmail, 160)
+        && isSafeText(request.resource.data.reason, 1200)
+        && request.resource.data.status == 'pending'
+        && request.resource.data.requestedAt is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.updatedBy == request.auth.uid;
+      allow read: if isLawyerOrAdmin() || isSelf(resource.data.requesterId);
+      allow update: if isLawyerOrAdmin()
+        && request.resource.data.status in ['pending', 'approved', 'rejected']
+        && request.resource.data.requesterId == resource.data.requesterId
+        && request.resource.data.requestedAt == resource.data.requestedAt
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.reviewedAt is timestamp
+        && request.resource.data.reviewedBy == request.auth.uid;
+      allow delete: if false;
+    }
+
+    match /newsletterSubscribers/{subscriberId} {
+      allow create: if isValidNewsletter(request.resource.data);
+      allow update: if isValidNewsletter(request.resource.data)
+        && resource.data.emailLower == request.resource.data.emailLower
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow read: if isLawyerOrAdmin();
+      allow delete: if false;
+    }
+
+    match /clinicSignups/{signupId} {
+      allow create: if isValidClinic(request.resource.data);
+      allow update: if isLawyerOrAdmin()
+        && isValidClinic(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.emailLower == resource.data.emailLower;
+      allow read: if isLawyerOrAdmin();
+      allow delete: if false;
+    }
+    
+    match /units/{unitId} {
+      allow read: if signedIn();
+      allow create: if isLawyerOrAdmin() && isValidUnit(request.resource.data);
+      allow update: if isLawyerOrAdmin() && isValidUnit(request.resource.data);
+      allow delete: if isLawyerOrAdmin();
+    }
+
+    match /maintenance_tickets/{ticketId} {
+      allow read: if signedIn() && (resource.data.reportedBy == request.auth.uid || isLawyerOrAdmin() || userRole(request.auth.uid) == 'maintenance');
+      allow create: if signedIn() && request.resource.data.reportedBy == request.auth.uid && isValidMaintenanceTicket(request.resource.data);
+      allow update: if signedIn() 
+        && isValidMaintenanceTicket(request.resource.data)
+        && request.resource.data.reportedBy == resource.data.reportedBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (resource.data.reportedBy == request.auth.uid || isLawyerOrAdmin() || userRole(request.auth.uid) == 'maintenance');
+      allow delete: if isLawyerOrAdmin();
+    }
+
+    match /meeting_minutes/{minuteId} {
+      allow read: if signedIn();
+      allow create: if isLawyerOrAdmin() && isValidMinute(request.resource.data);
+      allow update: if isLawyerOrAdmin() 
+        && isValidMinute(request.resource.data)
+        && request.resource.data.recordedBy == resource.data.recordedBy
+        && request.resource.data.date == resource.data.date;
+      allow delete: if isLawyerOrAdmin();
+    }
+
+    match /aiAnalyses/{analysisId} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && isValidAiAnalysis(request.resource.data);
+      allow read: if signedIn() && (
+        resource.data.userId == request.auth.uid || isLawyerOrAdmin()
+      );
+      allow update: if false; // Analyses are immutable
+      allow delete: if signedIn() && (
+        resource.data.userId == request.auth.uid || isLawyerOrAdmin()
+      );
+    }
+
+    match /attorneyProfiles/{uid} {
+      allow read: if true;
+      allow create: if signedIn()
+                    && isSelf(uid)
+                    && isLawyerOrAdmin()
+                    && isValidAttorneyProfile(request.resource.data);
+      allow update: if signedIn()
+                    && isSelf(uid)
+                    && isLawyerOrAdmin()
+                    && isValidAttorneyProfile(request.resource.data)
+                    && request.resource.data.uid == resource.data.uid
+                    && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if signedIn() && (isSelf(uid) || isAdmin());
+    }
+
+    match /legalServices/{serviceId} {
+      allow read: if true;
+      allow create: if signedIn()
+                    && isSelf(request.resource.data.attorneyId)
+                    && isLawyerOrAdmin()
+                    && isValidLegalService(request.resource.data);
+      allow update: if signedIn()
+                    && isSelf(resource.data.attorneyId)
+                    && isSelf(request.resource.data.attorneyId)
+                    && isLawyerOrAdmin()
+                    && isValidLegalService(request.resource.data)
+                    && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if signedIn() && (isSelf(resource.data.attorneyId) || isAdmin());
+    }
+  }
+}
