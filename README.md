@@ -1,55 +1,42 @@
 # BEE COOP
 
-Client repository for the BEE COOP platform. This repo currently contains two surfaces:
+Client repository for the BEE COOP static Firebase website.
 
-- `app/`: a Next.js 15 application
-- `public/`: the static Firebase Hosting site that is currently deployed
+## Local Development
 
-The Next.js app and the static site share the same repo, but they are not the same deploy target. The Firebase workflows in this repo currently publish the `public/` site, while the Next app is validated locally and in CI.
+- Static site assets live under `public/`
+- Firebase configuration lives in `firebase.json`, `.firebaserc`, `firestore.rules`, and `storage.rules`
+- There is no Next.js or npm application toolchain in this repo anymore
+- Edit HTML, CSS, and browser JavaScript directly in `public/`
 
-## Local development
-
-- Prerequisites: Node.js
-- Install dependencies: `npm install`
-- Start the Next app: `npm run dev`
-- Validate the Next app: `npm run validate:app`
-- Environment template: `.env.example`
-- Next app routes live under `app/`, shared UI under `components/`, and Firebase helpers under `lib/`
-- Static Firebase Hosting assets live under `public/`
-
-## Deployment targets
+## Deployment Targets
 
 - Firebase project: `nanny-tech`
 - Production hosting target: `bee-prec-site`
 - Staging hosting target: `bee-prec-site-staging`
 - Default branch: `main`
 
-## Release model
+## Release Model
 
-GitHub Actions is the primary deployment path for the static site.
+GitHub Actions is the deployment path for the static website.
 
 1. Push to `main` deploys production.
 2. Push to `MAROON-staging` deploys staging.
 3. `workflow_dispatch` can be used for controlled manual deploys.
-4. `.github/workflows/firebase-hosting-merge.yml` deploys:
-   - Firebase Hosting
-   - Firestore rules
-   - Storage rules
-5. The Next.js app is still part of the repo, but its runtime is not the current Firebase Hosting output.
+4. `.github/workflows/firebase-hosting-merge.yml` deploys Firebase Hosting plus Firestore and Storage rules.
 
-## CI and operations assets
+## CI and Operations Assets
 
 - Health checks: `.github/workflows/bee-prec-smoke-tests.yml`
 - Security scanning: CodeQL, Semgrep, ZAP, hardening, and red-team workflows in `.github/workflows/`
 - Firebase bootstrap and deployment helpers in `scripts/`
 - Product and data documentation in `docs/`
-- Use `npm run validate:app` to validate the Next.js app locally.
 
-## Required repository settings
+## Required Repository Settings
 
 - `FIREBASE_SERVICE_ACCOUNT_NANNY_TECH` (Firebase service account JSON for project `nanny-tech`)
 
-## GCP / Operations bootstrap
+## GCP / Operations Bootstrap
 
 For production operations observability in GCP:
 
@@ -60,11 +47,8 @@ For production operations observability in GCP:
 - `notification_channel_id` is optional, but recommended for paging or email/Webhook alerts.
 - If omitted, the script will create the uptime check and skip policy notification wiring.
 
-## Key paths
+## Key Paths
 
-- `app/`
-- `components/`
-- `lib/`
 - `public/`
 - `scripts/`
 - `docs/`

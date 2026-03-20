@@ -1,4 +1,4 @@
-name: BEE COOP static production smoke checks
+name: BEE COOP static website smoke checks
 
 on:
   schedule:
@@ -6,11 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       targetUrl:
-        description: URL to validate
+        description: Static website URL to validate
         required: false
         default: https://bee-prec-site.web.app
       requireText:
-        description: Required text on homepage
+        description: Required text on the homepage
         required: false
         default: BEE COOP
 
